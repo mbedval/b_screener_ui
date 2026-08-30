@@ -1,0 +1,44 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { createRoot } from 'react-dom/client'
+import { Activity, ArrowRight, BarChart3, Database, Home, LayoutDashboard, RefreshCw, Search, TableProperties, TrendingUp } from 'lucide-react'
+import './styles.css'
+
+const groupIcon = { Calls: Activity, Scanners: TrendingUp, 'Shared cache': Database, 'Raw data': Database, Sectors: BarChart3, 'Delivery spikes': Activity }
+const apps = {
+  rawdata: { title: 'Raw Data', eyebrow: 'RAW DATA EXPLORER', description: 'Inspect source market data, technical indicators, fundamentals and stock metadata.', database: 'rawdata_db', accent: 'Source tables' },
+  intelligence: { title: 'Market Intelligence', eyebrow: 'BSA MARKET INTELLIGENCE', description: 'Explore generated calls, scanner outputs, sector analysis and delivery signals.', database: 'bsa_db', accent: 'Analysis sources' },
+}
+const format = (value, key = '') => {
+  if (value === null || value === undefined) return '—'
+  if (typeof value === 'number') return key.includes('ratio') || key.includes('confidence') || key.includes('change') || key.includes('deviation') ? `${value.toFixed(2)}%` : new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(value)
+  return String(value)
+}
+const signalTone = value => /BUY|SUCCESS|POSITIVE|ACCUMULATION|SPIKE/i.test(value) ? 'positive' : /SELL|FAIL|NEGATIVE|DISTRIBUTION/i.test(value) ? 'negative' : 'neutral'
+
+function Landing() {
+  return <div className="landing"><header className="landing-header"><div className="brand"><span className="brand-mark">B</span><div><b>BSA Data Portal</b><small>POSTGRESQL APPLICATIONS</small></div></div></header><main className="landing-main"><p className="eyebrow">ONE PORTAL · TWO DATA PRODUCTS</p><h1>Choose your workspace.</h1><p className="landing-copy">Browse the underlying market data or move directly into calculated BSA signals and analysis.</p><div className="app-cards">{Object.entries(apps).map(([key, item]) => <a className={`app-card ${key}`} href={`/${key}`} key={key}><span className="app-icon">{key === 'rawdata' ? <Database/> : <TrendingUp/>}</span><small>{item.database}</small><h2>{item.title}</h2><p>{item.description}</p><b>Open {item.title} <ArrowRight size={16}/></b></a>)}</div></main></div>
+}
+
+function App() {
+  const dataset = location.pathname.startsWith('/intelligence') ? 'intelligence' : location.pathname.startsWith('/rawdata') ? 'rawdata' : null
+  if (!dataset) return <Landing />
+  return <Workspace dataset={dataset} />
+}
+
+function Workspace({ dataset }) {
+  const appInfo = apps[dataset], api = `/api/${dataset}`
+  const [catalog, setCatalog] = useState([]), [active, setActive] = useState('dashboard'), [data, setData] = useState(null)
+  const [overview, setOverview] = useState(null), [dbInfo, setDbInfo] = useState(null), [query, setQuery] = useState(''), [loading, setLoading] = useState(false), [error, setError] = useState('')
+  const load = async (table = active, search = query) => { setLoading(true); setError(''); try { const res = await fetch(`${api}/tables/${table}?limit=100&search=${encodeURIComponent(search)}`), json = await res.json(); if (!res.ok) throw new Error(json.detail); setData(json) } catch (e) { setError(e.message); setData(null) } finally { setLoading(false) } }
+  const refreshDashboard = async () => { setError(''); try { const [c, o, d] = await Promise.all([fetch(`${api}/catalog`), fetch(`${api}/overview`), fetch(`${api}/database-info`)]), cat = await c.json(), details = await d.json(); if (!c.ok) throw new Error(cat.detail); if (!d.ok) throw new Error(details.detail); setCatalog(cat); setOverview(await o.json()); setDbInfo(details) } catch (e) { setError(e.message) } }
+  useEffect(() => { refreshDashboard() }, [dataset])
+  useEffect(() => { if (active !== 'dashboard') load(active, '') }, [active])
+  const grouped = useMemo(() => catalog.reduce((acc, item) => ({ ...acc, [item.group]: [...(acc[item.group] || []), item] }), {}), [catalog])
+  const current = catalog.find(item => item.name === active)
+  return <div className="app-shell"><aside><div className="brand"><span className="brand-mark">B</span><div><b>{appInfo.title}</b><small>{appInfo.database.toUpperCase()}</small></div></div><nav><a className="nav-item" href="/"><Home/> Portal home</a><button className={`nav-item ${active === 'dashboard' ? 'selected' : ''}`} onClick={() => setActive('dashboard')}><LayoutDashboard/> Overview</button>{Object.entries(grouped).map(([group, items]) => { const Icon = groupIcon[group] || TableProperties; return <section key={group}><p className="nav-label"><Icon/> {group}</p>{items.map(item => <button key={item.name} className={`nav-item ${active === item.name ? 'selected' : ''}`} onClick={() => setActive(item.name)}>{item.label}</button>)}</section> })}</nav><div className="connection"><i className={error ? 'offline' : ''}/>{error ? 'Database unavailable' : 'PostgreSQL connected'}</div></aside><main><header><div><p className="eyebrow">{appInfo.eyebrow}</p><h1>{active === 'dashboard' ? `${appInfo.title} overview` : current?.label || active}</h1><p className="subhead">{active === 'dashboard' ? appInfo.description : `${data?.total ?? '—'} records · Latest rows first`}</p></div><button className="refresh" onClick={() => active === 'dashboard' ? refreshDashboard() : load()}><RefreshCw size={16}/> Refresh</button></header>{active === 'dashboard' ? <Dashboard dbInfo={dbInfo} overview={overview} catalog={catalog} setActive={setActive} title={appInfo.accent} /> : <TableView data={data} loading={loading} error={error} query={query} setQuery={setQuery} onSearch={() => load()} />}</main></div>
+}
+
+function Dashboard({ dbInfo, overview, catalog, setActive, title }) { return <><section className="db-details"><div><p className="eyebrow">CONNECTED DATABASE</p><h2>{dbInfo?.database || 'Loading…'}</h2><p>Schema: <b>{dbInfo?.schema || '—'}</b> · Role: <b>{dbInfo?.user || '—'}</b></p></div><div><span>Available databases</span><div className="db-chips">{dbInfo?.available_databases?.map(name => <i key={name} className={name === dbInfo.database ? 'current-db' : ''}>{name}</i>) || '—'}</div></div></section><div className="metric-grid"><div className="metric-card"><span>Available tables</span><strong>{dbInfo?.tables?.length ?? overview?.tables ?? '—'}</strong><small>Database inventory</small></div><div className="metric-card"><span>Historical calls</span><strong>{overview?.counts?.historical_calls ?? '—'}</strong><small>Current records</small></div><div className="metric-card"><span>Intraday signals</span><strong>{overview?.counts?.intraday_call ?? '—'}</strong><small>Current records</small></div><div className="metric-card"><span>QuickTrade picks</span><strong>{overview?.counts?.quicktrade_timestamp ?? '—'}</strong><small>Current records</small></div></div><section className="panel"><div className="panel-heading"><div><p className="eyebrow">TABLE EXPLORER</p><h2>Click a table to view its data</h2></div><span>{catalog.length} tables</span></div><div className="source-grid">{catalog.map(item => <button key={item.name} onClick={() => setActive(item.name)}><small>{item.group}</small><b>{item.label}</b><span>View table →</span></button>)}</div></section></> }
+
+function TableView({ data, loading, error, query, setQuery, onSearch }) { const [sort, setSort] = useState({ key: '', asc: true }); const rows = useMemo(() => { if (!data) return []; const copy = [...data.rows]; if (sort.key) copy.sort((a, b) => String(a[sort.key] ?? '').localeCompare(String(b[sort.key] ?? ''), undefined, { numeric: true }) * (sort.asc ? 1 : -1)); return copy }, [data, sort]); const sortBy = key => setSort(s => ({ key, asc: s.key === key ? !s.asc : true })); return <section className="panel data-panel"><div className="toolbar"><div className="search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} placeholder="Search ticker, sector, signal…"/><button onClick={onSearch}>Search</button></div><span>{data?.columns?.length ?? 0} columns</span></div>{loading && <div className="state">Loading data…</div>}{error && <div className="state error">{error}</div>}{!loading && !error && data && <div className="table-wrap"><table><thead><tr>{data.columns.map(key => <th key={key} onClick={() => sortBy(key)}>{key.replaceAll('_', ' ')} {sort.key === key && (sort.asc ? '↑' : '↓')}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{data.columns.map(key => { const value = row[key], badge = typeof value === 'string' && /signal|call|status|phase|spike|bet/.test(key); return <td key={key}>{badge ? <span className={`badge ${signalTone(value)}`}>{format(value, key)}</span> : format(value, key)}</td> })}</tr>)}</tbody></table>{!rows.length && <div className="state">No matching rows.</div>}</div>}</section> }
+createRoot(document.getElementById('root')).render(<App />)
