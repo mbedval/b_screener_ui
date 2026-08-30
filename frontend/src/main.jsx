@@ -261,7 +261,8 @@ function App() {
 
   useEffect(() => { refreshDashboard() }, [dataset])
   useEffect(() => {
-    if (active !== 'dashboard' && !MASTER_PAGES.includes(active) && !active.startsWith('sector:')) {
+    const customPages = ['dashboard', 'fno_active', 'option_chain_analyzer', 'best_option_strategy']
+    if (!customPages.includes(active) && !MASTER_PAGES.includes(active) && !active.startsWith('sector:')) {
       load(active, '')
     }
     if (active.startsWith('sector:')) {
@@ -420,10 +421,1032 @@ function App() {
             onScanTableChange={handleSectorScanChange}
           />
         )}
-        {!MASTER_PAGES.includes(active) && !active.startsWith('sector:') && active !== 'dashboard' && (
+        {active === 'fno_active' ? (
+          <FnoActivePage data={data} loading={loading} error={error} />
+        ) : active === 'option_chain_analyzer' ? (
+          <OptionChainAnalyzerPage apiBase={apiBase} />
+        ) : active === 'best_option_strategy' ? (
+          <BestOptionStrategyPage apiBase={apiBase} />
+        ) : !MASTER_PAGES.includes(active) && !active.startsWith('sector:') && active !== 'dashboard' && (
           <TableView data={data} loading={loading} error={error} query={query} setQuery={setQuery} onSearch={() => load()} />
         )}
       </main>
+    </div>
+  )
+}
+
+// ─── Option Trade Rationale & Setup Modal ──────────────────────────────────────
+function OptionTradeNoteModal({ noteData, onClose }) {
+  if (!noteData) return null
+  const isCall = noteData.type === 'CALL'
+
+  return (
+    <Modal title={`⭐ Trade Setup & Technical Rationale: ${noteData.instrument}`} onClose={onClose}>
+      <div style={{ padding: '4px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <span style={{
+              background: isCall ? 'rgba(82,196,26,0.18)' : 'rgba(255,77,79,0.18)',
+              color: isCall ? '#52c41a' : '#ff4d4f',
+              padding: '3px 10px', borderRadius: 4, fontSize: 11, fontWeight: 800, letterSpacing: 1
+            }}>
+              {isCall ? 'RECOMMENDED CALL BUY (BULLISH RALLY)' : 'RECOMMENDED PUT BUY (BEARISH HEDGE)'}
+            </span>
+            <h2 style={{ fontSize: 20, margin: '6px 0 0 0', color: '#fff', fontWeight: 700 }}>
+              {noteData.instrument} Option Contract Setup
+            </h2>
+          </div>
+
+          <div style={{ background: 'rgba(126,200,240,0.12)', padding: '6px 14px', borderRadius: 6, border: '1px solid rgba(126,200,240,0.3)', textAlign: 'right' }}>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>Expected Return</span>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#52c41a' }}>
+              {noteData.projected_roi}
+            </div>
+          </div>
+        </div>
+
+        {/* Option Premium Target & SL Metrics Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
+          <div style={{ background: 'rgba(255,255,255,0.04)', padding: 10, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>Option Entry LTP</span>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>₹{noteData.ltp?.toFixed(2)}</div>
+          </div>
+
+          <div style={{ background: 'rgba(255,77,79,0.08)', padding: 10, borderRadius: 6, border: '1px solid rgba(255,77,79,0.25)' }}>
+            <span style={{ fontSize: 11, color: '#ff4d4f' }}>Option Stop Loss (SL)</span>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#ff4d4f' }}>₹{noteData.option_sl?.toFixed(2)}</div>
+          </div>
+
+          <div style={{ background: 'rgba(82,196,26,0.08)', padding: 10, borderRadius: 6, border: '1px solid rgba(82,196,26,0.25)' }}>
+            <span style={{ fontSize: 11, color: '#52c41a' }}>Option Target (T1 / T2)</span>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#52c41a' }}>
+              ₹{noteData.option_t1?.toFixed(2)} / ₹{noteData.option_t2?.toFixed(2)}
+            </div>
+          </div>
+
+          <div style={{ background: 'rgba(234,179,8,0.08)', padding: 10, borderRadius: 6, border: '1px solid rgba(234,179,8,0.25)' }}>
+            <span style={{ fontSize: 11, color: '#eab308' }}>Risk : Reward</span>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#eab308' }}>{noteData.risk_reward}</div>
+          </div>
+        </div>
+
+        {/* Spot Stock Trigger & Support Targets */}
+        <div style={{ background: 'rgba(15,23,42,0.8)', padding: 12, borderRadius: 6, border: '1px solid rgba(126,200,240,0.2)', marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#7ec8f0', marginBottom: 6, textTransform: 'uppercase' }}>
+            Underlying Stock Spot Reference (Spot Price: ₹{noteData.stock_spot?.toFixed(2)})
+          </div>
+          <div style={{ display: 'flex', gap: 16, fontSize: 13, flexWrap: 'wrap', color: '#cbd5e1' }}>
+            <span>Stock Trigger: <b style={{ color: '#fff' }}>Above ₹{noteData.stock_spot?.toFixed(2)}</b></span>
+            <span>Stock SL: <b style={{ color: '#ff4d4f' }}>₹{noteData.stock_sl?.toFixed(2)}</b></span>
+            <span>Stock Target: <b style={{ color: '#52c41a' }}>₹{noteData.stock_target?.toFixed(2)}</b></span>
+          </div>
+        </div>
+
+        {/* Manageable Lot Count & Square-Off Liquidity Box */}
+        <div style={{ background: 'linear-gradient(135deg, rgba(30,41,59,0.9), rgba(15,23,42,0.95))', padding: 14, borderRadius: 6, border: '1px solid rgba(82,196,26,0.3)', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#52c41a', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+              🛡️ Manageable Lot & Liquidity Square-Off Protection
+            </div>
+            <span style={{ background: 'rgba(82,196,26,0.2)', color: '#52c41a', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 800 }}>
+              {noteData.squareoff_rating}
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginTop: 10, marginBottom: 10 }}>
+            <div style={{ background: 'rgba(255,255,255,0.04)', padding: 8, borderRadius: 5, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ fontSize: 10, color: '#94a3b8' }}>NSE Official Lot Size</span>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>
+                {noteData.lot_size?.toLocaleString('en-IN')} Shares
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.04)', padding: 8, borderRadius: 5, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ fontSize: 10, color: '#94a3b8' }}>Capital Required / Lot</span>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#7ec8f0' }}>
+                ₹{noteData.capital_per_lot?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(82,196,26,0.12)', padding: 8, borderRadius: 5, border: '1px solid rgba(82,196,26,0.3)' }}>
+              <span style={{ fontSize: 10, color: '#52c41a', fontWeight: 700 }}>Max Safe Manageable Lots</span>
+              <div style={{ fontSize: 15, fontWeight: 800, color: '#52c41a' }}>
+                {noteData.manageable_lots} Lots ({noteData.manageable_shares?.toLocaleString('en-IN')} Qty)
+              </div>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5, background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 4 }}>
+            💡 <b>Square-Off Liquidity Advice:</b> {noteData.squareoff_advice}
+          </div>
+        </div>
+
+        {/* Technical Rationale & Explanation Box */}
+        <div style={{ background: 'rgba(255,255,255,0.03)', padding: 14, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 6 }}>
+            💡 Quantitative Selection Rationale:
+          </div>
+          <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>
+            {noteData.explanation}
+          </div>
+        </div>
+
+        {/* Greeks & Decay Strategy Warning */}
+        <div style={{ background: 'rgba(234, 179, 8, 0.08)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: '#e2e8f0' }}>
+          <b style={{ color: '#eab308' }}>⏳ Holding & Decay Rules:</b>
+          <div style={{ marginTop: 4, color: '#94a3b8' }}>
+            • Delta (Δ): <b>{noteData.delta}</b> · Theta (Θ Decay): <b>{noteData.theta} ₹/day</b>.<br />
+            • Recommended Holding: <b>{noteData.holding}</b>.<br />
+            • Close long positions before weekends/holidays to eliminate Theta time-decay losses.
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Option Chain & Greek Analyzer Module ────────────────────────────────────
+function OptionChainAnalyzerPage({ apiBase }) {
+  const [selectedTradeNote, setSelectedTradeNote] = useState(null)
+  const [tickerInput, setTickerInput] = useState('NIFTY')
+  const [activeTicker, setActiveTicker] = useState('NIFTY')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [progress, setProgress] = useState(0)
+  const [progressStage, setProgressStage] = useState('')
+
+  const loadChain = useCallback(targetTicker => {
+    const t = (targetTicker || 'NIFTY').trim().toUpperCase()
+    setActiveTicker(t)
+    setTickerInput(t)
+    setLoading(true)
+    setError('')
+    setData(null)
+
+    let p = 12
+    setProgress(p)
+    setProgressStage(`🔍 Step 1/4: Searching ticker '${t}' & querying database...`)
+
+    const progressTimer = setInterval(() => {
+      p += Math.floor(Math.random() * 9) + 4
+      if (p < 38) {
+        setProgressStage(`📥 Step 2/4: Downloading spot price & option strikes for ${t}...`)
+      } else if (p < 68) {
+        setProgressStage(`⚙️ Step 3/4: Computing Option Greeks (Delta Δ, Gamma Γ, Theta Θ, Vega ν)...`)
+      } else if (p < 92) {
+        setProgressStage(`📊 Step 4/4: Writing report to temporary table raw_ticker_option_chain_temp...`)
+      }
+      if (p >= 92) p = 92
+      setProgress(p)
+    }, 70)
+
+    api.get(`${apiBase}/option-chain?ticker=${encodeURIComponent(t)}`)
+      .then(d => {
+        clearInterval(progressTimer)
+        if (d.detail) throw new Error(d.detail)
+        setProgress(100)
+        setProgressStage(`✅ Report ready! Rendered 21 derivative contracts for ${t}`)
+        setTimeout(() => {
+          setData(d)
+          setLoading(false)
+        }, 120)
+      })
+      .catch(err => {
+        clearInterval(progressTimer)
+        setError(err.message || 'Failed to analyze option chain.')
+        setLoading(false)
+      })
+  }, [apiBase])
+
+  useEffect(() => {
+    loadChain('NIFTY')
+  }, [])
+
+  const QUICK_TICKERS = ['NIFTY', 'BANKNIFTY', 'AUBANK', 'ABB', 'HDFCBANK', 'RELIANCE', 'INFY', 'TATAMOTORS', 'BEL', 'ICICIBANK', 'TCS', 'SBIN']
+
+  return (
+    <div className="option-chain-page">
+      {/* Header Panel with Search & Quick Shortcuts */}
+      <div className="panel" style={{ padding: '16px 20px', marginBottom: 16, background: 'linear-gradient(135deg, rgba(26,32,44,0.95), rgba(15,23,42,0.98))', border: '1px solid rgba(126,200,240,0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+          <div>
+            <span style={{ background: 'rgba(126,200,240,0.15)', color: '#7ec8f0', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
+              DERIVATIVE ANALYSIS MODULE
+            </span>
+            <h2 style={{ fontSize: 20, margin: '4px 0 0 0', color: '#fff', fontWeight: 700 }}>
+              Option Chain & Greeks Analyzer (10 Strikes ITM / 10 Strikes OTM)
+            </h2>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="search" style={{ minWidth: 220 }}>
+              <Search size={16} />
+              <input
+                value={tickerInput}
+                disabled={loading}
+                onChange={e => setTickerInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !loading && loadChain(tickerInput)}
+                placeholder="Enter ticker (e.g. HDFCBANK)"
+              />
+            </div>
+            <button
+              className="button-primary"
+              disabled={loading}
+              onClick={() => !loading && loadChain(tickerInput)}
+              style={{
+                height: 36,
+                padding: '0 16px',
+                background: loading ? 'rgba(126,200,240,0.5)' : '#7ec8f0',
+                color: '#0f172a',
+                border: 'none',
+                borderRadius: 6,
+                fontWeight: 700,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.7 : 1
+              }}
+            >
+              {loading ? '⚡ Downloading...' : 'Analyze Chain'}
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Ticker Shortcuts */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>Quick Tickers:</span>
+          {QUICK_TICKERS.map(t => (
+            <button
+              key={t}
+              className={`filter-btn ${activeTicker === t ? 'active' : ''}`}
+              onClick={() => { setTickerInput(t); loadChain(t); }}
+              style={{ fontSize: 12, padding: '3px 10px' }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Dynamic Strategy Summary Header */}
+        {!loading && data && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Spot LTP & Recovery Target</span>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#7ec8f0', marginTop: 2 }}>
+                {data.ticker} ₹{data.underlying_price?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: 11, color: '#52c41a', marginTop: 2, fontWeight: 600 }}>
+                Target: ₹{data.rally_target?.toLocaleString('en-IN', { minimumFractionDigits: 2 })} (+3.2% Rally)
+              </div>
+            </div>
+
+            <div
+              style={{ background: 'rgba(82, 196, 26, 0.12)', padding: 12, borderRadius: 6, border: '1px solid rgba(82, 196, 26, 0.4)', cursor: 'pointer' }}
+              onClick={() => data.best_call && setSelectedTradeNote(data.best_call)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 11, color: '#52c41a', textTransform: 'uppercase', fontWeight: 700 }}>⭐ BEST CHEAP OTM CALL</span>
+                <span style={{ background: 'rgba(82,196,26,0.25)', color: '#52c41a', padding: '2px 6px', borderRadius: 3, fontSize: 10, fontWeight: 800 }}>
+                  {data.best_call?.projected_roi}
+                </span>
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#52c41a', marginTop: 3 }}>
+                {data.best_call ? `${data.best_call.strike} CE (₹${data.best_call.ltp})` : 'ATM CE'}
+              </div>
+              <div style={{ fontSize: 11, color: '#e2e8f0', marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Δ {data.best_call?.delta} · {data.best_call?.prob}% Win</span>
+                <span style={{ color: '#7ec8f0', textDecoration: 'underline', fontSize: 10, fontWeight: 700 }}>View Trade Note ➔</span>
+              </div>
+            </div>
+
+            <div
+              style={{ background: 'rgba(255, 77, 79, 0.12)', padding: 12, borderRadius: 6, border: '1px solid rgba(255, 77, 79, 0.4)', cursor: 'pointer' }}
+              onClick={() => data.best_put && setSelectedTradeNote(data.best_put)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 11, color: '#ff4d4f', textTransform: 'uppercase', fontWeight: 700 }}>⭐ BEST CHEAP OTM PUT</span>
+                <span style={{ background: 'rgba(255,77,79,0.25)', color: '#ff4d4f', padding: '2px 6px', borderRadius: 3, fontSize: 10, fontWeight: 800 }}>
+                  {data.best_put?.projected_roi}
+                </span>
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#ff4d4f', marginTop: 3 }}>
+                {data.best_put ? `${data.best_put.strike} PE (₹${data.best_put.ltp})` : 'ATM PE'}
+              </div>
+              <div style={{ fontSize: 11, color: '#e2e8f0', marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Δ {data.best_put?.delta} · {data.best_put?.prob}% Win</span>
+                <span style={{ color: '#7ec8f0', textDecoration: 'underline', fontSize: 10, fontWeight: 700 }}>View Trade Note ➔</span>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(234, 179, 8, 0.12)', padding: 12, borderRadius: 6, border: '1px solid rgba(234, 179, 8, 0.4)' }}>
+              <span style={{ fontSize: 11, color: '#eab308', textTransform: 'uppercase', fontWeight: 700 }}>DIRECTIONAL BIAS & DURATION</span>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginTop: 3 }}>
+                {data.directional_bias_label || '🔥 STRONG BULLISH RALLY EXPECTED'}
+              </div>
+              <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>
+                Hold 1-2 Days (Exit before Friday close to avoid Theta decay)
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Animated Download & Calculation Progress Bar */}
+      {loading && (
+        <section className="panel" style={{ padding: '32px 24px', margin: '16px 0', background: 'linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.98))', border: '1px solid rgba(126,200,240,0.3)', borderRadius: 8, textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 8 }}>
+            <RefreshCw size={22} className="spin" style={{ color: '#7ec8f0' }} />
+            <h3 style={{ fontSize: 18, margin: 0, color: '#fff', fontWeight: 700 }}>
+              Analyzing Live Derivatives for <span style={{ color: '#7ec8f0' }}>{activeTicker}</span>
+            </h3>
+          </div>
+
+          <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 18, fontWeight: 500 }}>
+            {progressStage}
+          </div>
+
+          <div style={{ width: '100%', maxWidth: 650, height: 12, background: 'rgba(255,255,255,0.08)', borderRadius: 6, margin: '0 auto', overflow: 'hidden', border: '1px solid rgba(126,200,240,0.2)' }}>
+            <div style={{
+              width: `${progress}%`,
+              height: '100%',
+              background: 'linear-gradient(90deg, #7ec8f0 0%, #52c41a 100%)',
+              borderRadius: 6,
+              transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              boxShadow: '0 0 14px rgba(126,200,240,0.7)'
+            }} />
+          </div>
+
+          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 10, fontWeight: 600 }}>
+            {progress}% Completed · Fetching 10 Strikes ITM & 10 Strikes OTM
+          </div>
+        </section>
+      )}
+
+      {/* Main Option Chain Table Grid */}
+      <section className="panel data-panel">
+        {error && <div className="state error">{error}</div>}
+        {!loading && !error && data && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th colSpan={5} style={{ background: 'rgba(82, 196, 26, 0.12)', color: '#52c41a', textAlign: 'center', fontSize: 12, fontWeight: 700 }}>
+                    CALL OPTIONS (CE GREEKS & VOLUME)
+                  </th>
+                  <th colSpan={2} style={{ background: 'rgba(126, 200, 240, 0.15)', color: '#7ec8f0', textAlign: 'center', fontSize: 12, fontWeight: 700 }}>
+                    STRIKE & MONEYNESS
+                  </th>
+                  <th colSpan={5} style={{ background: 'rgba(255, 77, 79, 0.12)', color: '#ff4d4f', textAlign: 'center', fontSize: 12, fontWeight: 700 }}>
+                    PUT OPTIONS (PE GREEKS & VOLUME)
+                  </th>
+                  <th colSpan={2} style={{ background: 'rgba(234, 179, 8, 0.12)', color: '#eab308', textAlign: 'center', fontSize: 12, fontWeight: 700 }}>
+                    STRATEGY & WIN PROBABILITY
+                  </th>
+                </tr>
+                <tr>
+                  <th style={{ fontSize: 11 }}>CE Delta (Δ)</th>
+                  <th style={{ fontSize: 11 }}>CE Theta (Θ)</th>
+                  <th style={{ fontSize: 11 }}>CE IV %</th>
+                  <th style={{ fontSize: 11 }}>CE Vol / OI</th>
+                  <th style={{ fontSize: 11 }}>CE LTP</th>
+                  <th style={{ fontSize: 12, color: '#7ec8f0' }}>Strike Price</th>
+                  <th style={{ fontSize: 11 }}>Moneyness</th>
+                  <th style={{ fontSize: 11 }}>PE LTP</th>
+                  <th style={{ fontSize: 11 }}>PE Vol / OI</th>
+                  <th style={{ fontSize: 11 }}>PE Delta (Δ)</th>
+                  <th style={{ fontSize: 11 }}>PE Theta (Θ)</th>
+                  <th style={{ fontSize: 11 }}>PE IV %</th>
+                  <th style={{ fontSize: 11 }}>Win Prob %</th>
+                  <th style={{ fontSize: 11 }}>Recommended Action & Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((r, i) => {
+                  const isRecCall = r.is_recommended_call
+                  const isRecPut = r.is_recommended_put
+                  const isATM = r.moneyness.includes('ATM')
+                  const isWin = r.win_probability >= 70
+
+                  let rowStyle = { background: 'transparent' }
+                  if (isRecCall) {
+                    rowStyle = { background: 'rgba(82, 196, 26, 0.16)', borderLeft: '4px solid #52c41a', cursor: 'pointer' }
+                  } else if (isRecPut) {
+                    rowStyle = { background: 'rgba(255, 77, 79, 0.16)', borderLeft: '4px solid #ff4d4f', cursor: 'pointer' }
+                  } else if (isATM) {
+                    rowStyle = { background: 'rgba(126, 200, 240, 0.08)' }
+                  }
+
+                  const handleRowClick = () => {
+                    if (isRecCall && data.best_call) setSelectedTradeNote(data.best_call)
+                    if (isRecPut && data.best_put) setSelectedTradeNote(data.best_put)
+                  }
+
+                  return (
+                    <tr key={i} className="data-row" style={rowStyle} onClick={handleRowClick}>
+                      <td style={{ color: '#7ec8f0', fontWeight: 600 }}>{r.ce_delta?.toFixed(2)}</td>
+                      <td style={{ color: '#ff4d4f' }}>{r.ce_theta?.toFixed(2)} ₹/d</td>
+                      <td style={{ color: '#cbd5e1' }}>{r.ce_iv?.toFixed(1)}%</td>
+                      <td>
+                        <div style={{ fontSize: 11 }}>
+                          <b style={{ color: '#e2e8f0' }}>V: {r.ce_volume?.toLocaleString('en-IN')}</b>
+                          <div style={{ color: '#94a3b8' }}>OI: {r.ce_oi?.toLocaleString('en-IN')}</div>
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <b style={{ color: '#52c41a', fontSize: 13 }}>₹{r.ce_ltp?.toFixed(2)}</b>
+                          {isRecCall && (
+                            <span style={{ background: '#52c41a', color: '#0f172a', padding: '1px 6px', borderRadius: 3, fontSize: 9, fontWeight: 900, letterSpacing: 0.5, cursor: 'pointer' }}>
+                              BEST CALL 🛈
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 10, color: r.ce_pchange >= 0 ? '#52c41a' : '#ff4d4f' }}>
+                          ({r.ce_pchange >= 0 ? '+' : ''}{r.ce_pchange}%)
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'center', background: isRecCall ? 'rgba(82,196,26,0.25)' : isRecPut ? 'rgba(255,77,79,0.25)' : isATM ? 'rgba(126, 200, 240, 0.2)' : 'rgba(255,255,255,0.03)' }}>
+                        <b style={{ color: '#fff', fontSize: 14, fontFamily: "'DM Mono'" }}>{r.strike_price}</b>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: 11, color: isRecCall ? '#52c41a' : isRecPut ? '#ff4d4f' : isATM ? '#7ec8f0' : '#cbd5e1', fontWeight: (isRecCall || isRecPut || isATM) ? 700 : 400 }}>
+                          {r.moneyness}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <b style={{ color: '#ff4d4f', fontSize: 13 }}>₹{r.pe_ltp?.toFixed(2)}</b>
+                          {isRecPut && (
+                            <span style={{ background: '#ff4d4f', color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 9, fontWeight: 900, letterSpacing: 0.5, cursor: 'pointer' }}>
+                              BEST PUT 🛈
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 10, color: r.pe_pchange >= 0 ? '#52c41a' : '#ff4d4f' }}>
+                          ({r.pe_pchange >= 0 ? '+' : ''}{r.pe_pchange}%)
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: 11 }}>
+                          <b style={{ color: '#e2e8f0' }}>V: {r.pe_volume?.toLocaleString('en-IN')}</b>
+                          <div style={{ color: '#94a3b8' }}>OI: {r.pe_oi?.toLocaleString('en-IN')}</div>
+                        </div>
+                      </td>
+                      <td style={{ color: '#7ec8f0', fontWeight: 600 }}>{r.pe_delta?.toFixed(2)}</td>
+                      <td style={{ color: '#ff4d4f' }}>{r.pe_theta?.toFixed(2)} ₹/d</td>
+                      <td style={{ color: '#cbd5e1' }}>{r.pe_iv?.toFixed(1)}%</td>
+                      <td>
+                        <span className={`badge ${isWin ? 'strong-buy' : 'strong-sell'}`} style={{ fontSize: 11 }}>
+                          {r.win_probability}% Win
+                        </span>
+                      </td>
+                      <td style={{ fontSize: 11, maxWidth: 220, lineHeight: 1.3 }}>
+                        <b style={{ color: isRecCall ? '#52c41a' : isRecPut ? '#ff4d4f' : isWin ? '#52c41a' : '#ff4d4f' }}>
+                          {isRecCall ? '⭐ RECOMMENDED BUY (Click for Setup Note)' : isRecPut ? '⭐ RECOMMENDED BUY (Click for Setup Note)' : r.recommended_action}
+                        </b>
+                        <div style={{ color: '#94a3b8' }}>{r.holding_duration}</div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {selectedTradeNote && (
+        <OptionTradeNoteModal noteData={selectedTradeNote} onClose={() => setSelectedTradeNote(null)} />
+      )}
+    </div>
+  )
+}
+
+// ─── Best Option Strategy Engine Module ────────────────────────────────────
+function BestOptionStrategyPage({ apiBase }) {
+  const [tickerInput, setTickerInput] = useState('HDFCBANK')
+  const [activeTicker, setActiveTicker] = useState('HDFCBANK')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [progress, setProgress] = useState(0)
+  const [progressStage, setProgressStage] = useState('')
+  const [selectedStratId, setSelectedStratId] = useState('bull_call_spread')
+
+  const loadStrategy = useCallback(targetTicker => {
+    const t = (targetTicker || 'HDFCBANK').trim().toUpperCase()
+    setActiveTicker(t)
+    setTickerInput(t)
+    setLoading(true)
+    setError('')
+    setData(null)
+
+    let p = 15
+    setProgress(p)
+    setProgressStage(`🔍 Step 1/4: Searching derivative database for ${t}...`)
+
+    const progressTimer = setInterval(() => {
+      p += Math.floor(Math.random() * 8) + 6
+      if (p < 40) {
+        setProgressStage(`📥 Step 2/4: Fetching live spot price & option chain Greeks for ${t}...`)
+      } else if (p < 70) {
+        setProgressStage(`📊 Step 3/4: Calculating PCR ratio, IV volatility skew & OI buildup...`)
+      } else if (p < 92) {
+        setProgressStage(`⚙️ Step 4/4: Simulating multi-leg payoff matrix & win probabilities...`)
+      }
+      if (p >= 92) p = 92
+      setProgress(p)
+    }, 150)
+
+    fetch(`${apiBase}/best-strategy?ticker=${encodeURIComponent(t)}`)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`)
+        return res.json()
+      })
+      .then(json => {
+        clearInterval(progressTimer)
+        setProgress(100)
+        setProgressStage(`✅ Strategy evaluation complete for ${t}!`)
+        setTimeout(() => {
+          setData(json)
+          setLoading(false)
+        }, 200)
+      })
+      .catch(err => {
+        clearInterval(progressTimer)
+        setError(`Failed to evaluate strategies for ${t}: ${err.message}`)
+        setLoading(false)
+      })
+  }, [apiBase])
+
+  useEffect(() => {
+    loadStrategy('HDFCBANK')
+  }, [])
+
+  const handleSubmit = e => {
+    e.preventDefault()
+    if (tickerInput.trim()) loadStrategy(tickerInput)
+  }
+
+  const quickTickers = ['HDFCBANK', 'ABB', 'AUBANK', 'NIFTY', 'BANKNIFTY', 'RELIANCE', 'INFY', 'TATAMOTORS', 'SBIN', 'ICICIBANK', 'BEL']
+
+  const selectedStrat = data?.strategies?.find(s => s.id === selectedStratId) || data?.strategies?.[0]
+
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="panel" style={{ padding: '20px 24px', background: 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.95))', border: '1px solid rgba(126,200,240,0.25)', borderRadius: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <span className="badge primary" style={{ fontSize: 11, letterSpacing: 1 }}>QUANTITATIVE DERIVATIVE ENGINE</span>
+            <h1 style={{ fontSize: 22, margin: '6px 0 0 0', color: '#fff', fontWeight: 700 }}>
+              🎯 Best Option Strategy Recommendation Engine
+            </h1>
+            <p style={{ margin: '4px 0 0 0', color: '#94a3b8', fontSize: 13 }}>
+              Multi-factor evaluation of Greeks, Volatility Skew, PCR & OI to maximize win probability and eliminate loss exposure.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="text"
+              disabled={loading}
+              className="search-input"
+              placeholder="Enter ticker (e.g. HDFCBANK, ABB)..."
+              value={tickerInput}
+              onChange={e => setTickerInput(e.target.value)}
+              style={{ width: 220, padding: '8px 12px', fontSize: 13, borderRadius: 6 }}
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="filter-btn active"
+              style={{
+                padding: '8px 16px',
+                fontSize: 13,
+                borderRadius: 6,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              {loading ? '⚡ Evaluating...' : 'Evaluate Strategies'}
+            </button>
+          </form>
+        </div>
+
+        {/* Quick Ticker Selection Buttons */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Quick Analyze:</span>
+          {quickTickers.map(t => (
+            <button
+              key={t}
+              disabled={loading}
+              className={`filter-btn ${activeTicker === t ? 'active' : ''}`}
+              onClick={() => { if (!loading) { setTickerInput(t); loadStrategy(t); } }}
+              style={{ fontSize: 12, padding: '3px 10px', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Market Environment Summary */}
+        {!loading && data && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: 10, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase' }}>Spot LTP & Recovery Target</span>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#7ec8f0', marginTop: 2 }}>
+                {data.ticker} ₹{data.underlying_price?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: 11, color: '#52c41a', marginTop: 2, fontWeight: 600 }}>
+                Target: ₹{data.rally_target?.toLocaleString('en-IN', { minimumFractionDigits: 2 })} (+3.4%)
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: 10, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase' }}>PCR Ratio & Volatility</span>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginTop: 2 }}>
+                PCR: {data.pcr_ratio} · IV: {data.iv_level}%
+              </div>
+              <div style={{ fontSize: 11, color: '#eab308', marginTop: 2 }}>
+                {data.iv_rating} ({data.iv_level < 22 ? 'Low IV Spread Advantage' : 'High IV Seller Opportunity'})
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: 10, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase' }}>NSE Official Lot Size</span>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginTop: 2 }}>
+                {data.lot_size?.toLocaleString('en-IN')} Shares / Lot
+              </div>
+              <div style={{ fontSize: 11, color: '#52c41a', marginTop: 2 }}>
+                Safe Limit: 5 Lots (Square-off Protected)
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(82, 196, 26, 0.12)', padding: 10, borderRadius: 6, border: '1px solid rgba(82, 196, 26, 0.3)' }}>
+              <span style={{ fontSize: 10, color: '#52c41a', textTransform: 'uppercase', fontWeight: 700 }}>Market Directional Bias</span>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginTop: 2 }}>
+                {data.market_bias_label}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Progress Bar */}
+      {loading && (
+        <section className="panel" style={{ padding: '32px 24px', margin: '16px 0', background: 'linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.98))', border: '1px solid rgba(126,200,240,0.3)', borderRadius: 8, textAlign: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 8 }}>
+            <RefreshCw size={22} className="spin" style={{ color: '#7ec8f0' }} />
+            <h3 style={{ fontSize: 18, margin: 0, color: '#fff', fontWeight: 700 }}>
+              Evaluating Best Option Strategies for <span style={{ color: '#7ec8f0' }}>{activeTicker}</span>
+            </h3>
+          </div>
+          <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 18, fontWeight: 500 }}>
+            {progressStage}
+          </div>
+          <div style={{ width: '100%', maxWidth: 650, height: 12, background: 'rgba(255,255,255,0.08)', borderRadius: 6, margin: '0 auto', overflow: 'hidden', border: '1px solid rgba(126,200,240,0.2)' }}>
+            <div style={{
+              width: `${progress}%`,
+              height: '100%',
+              background: 'linear-gradient(90deg, #7ec8f0 0%, #52c41a 100%)',
+              borderRadius: 6,
+              transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              boxShadow: '0 0 14px rgba(126,200,240,0.7)'
+            }} />
+          </div>
+        </section>
+      )}
+
+      {/* Strategies Selection Cards Grid */}
+      {!loading && !error && data && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+            {data.strategies.map(s => {
+              const isSelected = s.id === (selectedStrat?.id || 'bull_call_spread')
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => setSelectedStratId(s.id)}
+                  style={{
+                    background: isSelected ? 'rgba(82, 196, 26, 0.14)' : 'rgba(30, 41, 59, 0.6)',
+                    border: isSelected ? '2px solid #52c41a' : '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: 8,
+                    padding: 14,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease-in-out',
+                    boxShadow: isSelected ? '0 0 16px rgba(82, 196, 26, 0.3)' : 'none'
+                  }}
+                >
+                  <div style={{ fontSize: 10, color: isSelected ? '#52c41a' : '#94a3b8', fontWeight: 800, letterSpacing: 0.5 }}>
+                    {s.tag}
+                  </div>
+                  <h3 style={{ fontSize: 16, margin: '4px 0 2px 0', color: '#fff', fontWeight: 700 }}>
+                    {s.name}
+                  </h3>
+                  <div style={{ fontSize: 12, color: '#7ec8f0', fontWeight: 600, marginBottom: 8 }}>
+                    {s.win_probability}% Win Prob · {s.risk_reward} R:R
+                  </div>
+                  <div style={{ fontSize: 11, color: '#cbd5e1', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 6 }}>
+                    <b>Max Profit:</b> <span style={{ color: '#52c41a' }}>{s.max_profit}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Selected Strategy Deep Analysis & Payoff Breakdown Panel */}
+          {selectedStrat && (
+            <section className="panel" style={{ padding: 24, background: 'linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.98))', border: '1px solid rgba(82,196,26,0.4)', borderRadius: 8 }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <span style={{ background: 'rgba(82,196,26,0.2)', color: '#52c41a', padding: '3px 10px', borderRadius: 4, fontSize: 11, fontWeight: 800, letterSpacing: 1 }}>
+                    {selectedStrat.tag}
+                  </span>
+                  <h2 style={{ fontSize: 22, margin: '6px 0 0 0', color: '#fff', fontWeight: 700 }}>
+                    {selectedStrat.name} Strategy Execution Plan
+                  </h2>
+                </div>
+                <div style={{ background: 'rgba(126,200,240,0.12)', padding: '8px 16px', borderRadius: 6, border: '1px solid rgba(126,200,240,0.3)', textAlign: 'right' }}>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>Winning Probability</span>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#52c41a' }}>
+                    {selectedStrat.win_probability}% Win Rate
+                  </div>
+                </div>
+              </div>
+
+              {/* Multi-Leg Construction Table */}
+              <div style={{ marginBottom: 20 }}>
+                <h4 style={{ fontSize: 13, color: '#7ec8f0', textTransform: 'uppercase', marginBottom: 10, fontWeight: 700 }}>
+                  📋 Multi-Leg Execution Order Construction:
+                </h4>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ fontSize: 11 }}>Action</th>
+                        <th style={{ fontSize: 11 }}>Quantity</th>
+                        <th style={{ fontSize: 11 }}>Instrument Contract</th>
+                        <th style={{ fontSize: 11 }}>Premium Price (LTP)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedStrat.legs.map((leg, idx) => (
+                        <tr key={idx}>
+                          <td>
+                            <span style={{
+                              background: leg.action === 'BUY' ? 'rgba(82,196,26,0.2)' : 'rgba(255,77,79,0.2)',
+                              color: leg.action === 'BUY' ? '#52c41a' : '#ff4d4f',
+                              padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 800
+                            }}>
+                              {leg.action}
+                            </span>
+                          </td>
+                          <td style={{ color: '#fff', fontWeight: 600 }}>{leg.qty}</td>
+                          <td style={{ color: '#7ec8f0', fontWeight: 700, fontFamily: "'DM Mono'" }}>{leg.instrument}</td>
+                          <td style={{ color: '#52c41a', fontWeight: 700 }}>{leg.price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Financial Risk & Payoff Metrics Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
+                <div style={{ background: 'rgba(255,255,255,0.04)', padding: 12, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>Net Premium Cost</span>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginTop: 2 }}>{selectedStrat.net_cost}</div>
+                </div>
+
+                <div style={{ background: 'rgba(82,196,26,0.1)', padding: 12, borderRadius: 6, border: '1px solid rgba(82,196,26,0.3)' }}>
+                  <span style={{ fontSize: 11, color: '#52c41a', fontWeight: 700 }}>Max Profit (Pass Scenario)</span>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#52c41a', marginTop: 2 }}>{selectedStrat.max_profit}</div>
+                </div>
+
+                <div style={{ background: 'rgba(255,77,79,0.1)', padding: 12, borderRadius: 6, border: '1px solid rgba(255,77,79,0.3)' }}>
+                  <span style={{ fontSize: 11, color: '#ff4d4f', fontWeight: 700 }}>Max Risk (Fail Scenario)</span>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#ff4d4f', marginTop: 2 }}>{selectedStrat.max_loss}</div>
+                </div>
+
+                <div style={{ background: 'rgba(234,179,8,0.1)', padding: 12, borderRadius: 6, border: '1px solid rgba(234,179,8,0.3)' }}>
+                  <span style={{ fontSize: 11, color: '#eab308', fontWeight: 700 }}>Breakeven Spot Price</span>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#eab308', marginTop: 2 }}>₹{selectedStrat.breakeven}</div>
+                </div>
+              </div>
+
+              {/* WHAT IF IT PASSES vs WHAT IF IT FAILS Analysis Box */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginBottom: 20 }}>
+                <div style={{ background: 'rgba(82,196,26,0.08)', padding: 14, borderRadius: 6, border: '1px solid rgba(82,196,26,0.3)' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#52c41a', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    🟢 WHAT IF STRATEGY PASSES (TARGET SCENARIO):
+                  </div>
+                  <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.5 }}>
+                    {selectedStrat.pass_scenario}
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(255,77,79,0.08)', padding: 14, borderRadius: 6, border: '1px solid rgba(255,77,79,0.3)' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#ff4d4f', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    🔴 WHAT IF STRATEGY FAILS (STOP LOSS SCENARIO):
+                  </div>
+                  <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.5 }}>
+                    {selectedStrat.fail_scenario}
+                  </div>
+                </div>
+              </div>
+
+              {/* Rationale & Greeks Strategy Advice */}
+              <div style={{ background: 'rgba(15,23,42,0.8)', padding: 14, borderRadius: 6, border: '1px solid rgba(126,200,240,0.2)' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#7ec8f0', marginBottom: 4 }}>
+                  💡 Quantitative Rationale & Greeks Sensitivity:
+                </div>
+                <div style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.5 }}>
+                  {selectedStrat.rationale}
+                </div>
+              </div>
+            </section>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── FNO Active Derivatives Page ────────────────────────────────────────────────
+function FnoActivePage({ data, loading, error }) {
+  const [filterType, setFilterType] = useState('ALL') // 'ALL', 'CALL', 'PUT', 'WIN_BET', 'RISK_BET'
+  const [sortKey, setSortKey] = useState('rank')
+  const [sortAsc, setSortAsc] = useState(true)
+
+  const rows = useMemo(() => {
+    if (!data?.rows) return []
+    let list = [...data.rows]
+
+    if (filterType === 'CALL') list = list.filter(r => r.contract_type === 'CALL')
+    if (filterType === 'PUT') list = list.filter(r => r.contract_type === 'PUT')
+    if (filterType === 'WIN_BET') list = list.filter(r => String(r.bet_category).includes('Win Bet'))
+    if (filterType === 'RISK_BET') list = list.filter(r => String(r.bet_category).includes('Risk Bet'))
+
+    if (sortKey) {
+      list.sort((a, b) => {
+        const valA = a[sortKey] ?? ''
+        const valB = b[sortKey] ?? ''
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return (valA - valB) * (sortAsc ? 1 : -1)
+        }
+        return String(valA).localeCompare(String(valB), undefined, { numeric: true }) * (sortAsc ? 1 : -1)
+      })
+    }
+    return list
+  }, [data?.rows, filterType, sortKey, sortAsc])
+
+  const handleSort = key => {
+    setSortAsc(k => sortKey === key ? !sortAsc : true)
+    setSortKey(key)
+  }
+
+  const callCount = useMemo(() => (data?.rows || []).filter(r => r.contract_type === 'CALL').length, [data?.rows])
+  const putCount = useMemo(() => (data?.rows || []).filter(r => r.contract_type === 'PUT').length, [data?.rows])
+  const winBetCount = useMemo(() => (data?.rows || []).filter(r => String(r.bet_category).includes('Win Bet')).length, [data?.rows])
+  const riskBetCount = useMemo(() => (data?.rows || []).filter(r => String(r.bet_category).includes('Risk Bet')).length, [data?.rows])
+
+  return (
+    <div className="fno-active-page">
+      {/* Strategy & Greeks Insight Banner */}
+      <div className="panel" style={{ padding: '16px 20px', marginBottom: 16, background: 'linear-gradient(135deg, rgba(26,32,44,0.95), rgba(15,23,42,0.98))', border: '1px solid rgba(126,200,240,0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ background: 'rgba(126,200,240,0.15)', color: '#7ec8f0', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
+              F&O DERIVATIVE GREEKS & DECAY ANALYTICS
+            </span>
+            <h2 style={{ fontSize: 18, margin: 0, color: '#fff', fontWeight: 700 }}>
+              Top Active Calls (15) & Puts (15)
+            </h2>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className={`filter-btn ${filterType === 'ALL' ? 'active' : ''}`} onClick={() => setFilterType('ALL')}>All ({data?.rows?.length || 0})</button>
+            <button className={`filter-btn buy ${filterType === 'CALL' ? 'active' : ''}`} onClick={() => setFilterType('CALL')}>Top 15 Calls ({callCount})</button>
+            <button className={`filter-btn sell ${filterType === 'PUT' ? 'active' : ''}`} onClick={() => setFilterType('PUT')}>Top 15 Puts ({putCount})</button>
+            <button className={`filter-btn strong-buy ${filterType === 'WIN_BET' ? 'active' : ''}`} onClick={() => setFilterType('WIN_BET')}>Win Bets ({winBetCount})</button>
+            <button className={`filter-btn strong-sell ${filterType === 'RISK_BET' ? 'active' : ''}`} onClick={() => setFilterType('RISK_BET')}>Risk Bets ({riskBetCount})</button>
+          </div>
+        </div>
+
+        {/* Weekend Decay Insight Rule Box */}
+        <div style={{ background: 'rgba(234, 179, 8, 0.08)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: '#e2e8f0', lineHeight: 1.5 }}>
+          <b style={{ color: '#eab308' }}>⚠️ Weekend / Holiday Time Decay Warning (Theta Decay Speed):</b>
+          <span style={{ marginLeft: 6 }}>
+            Options automatically lose value over weekends (Friday close ➔ Monday open) due to <b>Theta (Θ) time decay</b> even if stock prices stay flat.
+            Buying OTM calls/puts before weekends carries high auto-decay loss. <b>Option Selling (Theta Harvest)</b> or <b>In-The-Money (ITM) spreads</b> provide higher win probability.
+          </span>
+        </div>
+      </div>
+
+      {/* Main Table */}
+      <section className="panel data-panel">
+        {loading && <div className="state">Loading F&O Active derivative data…</div>}
+        {error && <div className="state error">{error}</div>}
+        {!loading && !error && data && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th onClick={() => handleSort('rank')} style={{ cursor: 'pointer', width: 50 }}># Rank</th>
+                  <th onClick={() => handleSort('contract_type')} style={{ cursor: 'pointer' }}>Type</th>
+                  <th onClick={() => handleSort('ticker')} style={{ cursor: 'pointer' }}>Ticker & Strike</th>
+                  <th onClick={() => handleSort('underlying_price')} style={{ cursor: 'pointer' }}>Underlying LTP</th>
+                  <th onClick={() => handleSort('ltp')} style={{ cursor: 'pointer' }}>Option LTP</th>
+                  <th onClick={() => handleSort('volume')} style={{ cursor: 'pointer' }}>Volume / OI</th>
+                  <th onClick={() => handleSort('pcr')} style={{ cursor: 'pointer' }}>PCR</th>
+                  <th onClick={() => handleSort('delta')} style={{ cursor: 'pointer' }}>Delta (Δ)</th>
+                  <th onClick={() => handleSort('gamma')} style={{ cursor: 'pointer' }}>Gamma (Γ)</th>
+                  <th onClick={() => handleSort('theta')} style={{ cursor: 'pointer' }}>Theta (Θ Decay)</th>
+                  <th onClick={() => handleSort('vega')} style={{ cursor: 'pointer' }}>Vega (ν)</th>
+                  <th onClick={() => handleSort('implied_volatility')} style={{ cursor: 'pointer' }}>IV %</th>
+                  <th onClick={() => handleSort('weekend_decay_risk')} style={{ cursor: 'pointer' }}>Weekend Decay Risk</th>
+                  <th onClick={() => handleSort('bet_category')} style={{ cursor: 'pointer' }}>Bet Category</th>
+                  <th onClick={() => handleSort('buildup_signal')} style={{ cursor: 'pointer' }}>Signal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => {
+                  const isCall = row.contract_type === 'CALL'
+                  const isWinBet = String(row.bet_category || '').includes('Win Bet')
+                  const isCriticalDecay = String(row.weekend_decay_risk || '').includes('CRITICAL') || String(row.weekend_decay_risk || '').includes('HIGH')
+                  return (
+                    <tr key={index} className="data-row">
+                      <td style={{ fontWeight: 700, color: '#7ec8f0' }}>#{row.rank}</td>
+                      <td>
+                        <span className={`badge ${isCall ? 'buy' : 'sell'}`} style={{ fontWeight: 700 }}>
+                          {row.contract_type} ({row.option_type})
+                        </span>
+                      </td>
+                      <td>
+                        <div>
+                          <b style={{ color: '#fff', fontSize: 13, fontFamily: "'DM Mono'" }}>{row.ticker} {row.most_active_strike} {row.option_type}</b>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>Exp: {row.expiry_date}</div>
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          <b style={{ color: '#e2e8f0' }}>₹{row.underlying_price?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</b>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{row.strike_distance_pct > 0 ? `+${row.strike_distance_pct}% OTM` : `${row.strike_distance_pct}% ATM`}</div>
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          <b style={{ color: isCall ? '#52c41a' : '#ff4d4f' }}>₹{row.ltp?.toFixed(2)}</b>
+                          <span style={{ fontSize: 11, marginLeft: 4, color: row.pchange >= 0 ? '#52c41a' : '#ff4d4f' }}>
+                            ({row.pchange >= 0 ? '+' : ''}{row.pchange}%)
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          <b style={{ color: '#cbd5e1' }}>Vol: {row.volume?.toLocaleString('en-IN')}</b>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>OI: {row.open_interest?.toLocaleString('en-IN')}</div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`status-badge ${row.pcr >= 1.0 ? 'buy' : 'sell'}`} style={{ fontSize: 11 }}>
+                          {row.pcr?.toFixed(2)}
+                        </span>
+                      </td>
+                      <td style={{ color: '#7ec8f0', fontWeight: 600 }}>{row.delta?.toFixed(2)}</td>
+                      <td style={{ color: '#cbd5e1' }}>{row.gamma?.toFixed(4)}</td>
+                      <td style={{ color: isCriticalDecay ? '#ff4d4f' : '#faad14', fontWeight: 700 }}>
+                        {row.theta?.toFixed(2)} ₹/day
+                      </td>
+                      <td style={{ color: '#cbd5e1' }}>{row.vega?.toFixed(1)}</td>
+                      <td style={{ color: '#e2e8f0' }}>{row.implied_volatility?.toFixed(1)}%</td>
+                      <td>
+                        <span style={{
+                          background: isCriticalDecay ? 'rgba(255, 77, 79, 0.15)' : 'rgba(255, 255, 255, 0.06)',
+                          color: isCriticalDecay ? '#ff4d4f' : '#cbd5e1',
+                          padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600
+                        }}>
+                          {row.weekend_decay_risk}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`badge ${isWinBet ? 'strong-buy' : 'strong-sell'}`} style={{ fontSize: 11 }}>
+                          {row.bet_category}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`badge ${signalTone(row.buildup_signal)}`} style={{ fontSize: 11 }}>
+                          {row.buildup_signal}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
@@ -432,14 +1455,26 @@ function App() {
 function Dashboard({ apiBase, setActive }) {
   const [trades, setTrades] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [sortKey, setSortKey] = useState('rank')
   const [sortAsc, setSortAsc] = useState(true)
 
   useEffect(() => {
-    fetch(`${apiBase}/top-trades`)
-      .then(r => r.json())
-      .then(d => { setTrades(d); setLoading(false) })
-      .catch(() => setLoading(false))
+    setLoading(true)
+    setError('')
+    api.get(`${apiBase}/top-trades`)
+      .then(d => {
+        if (Array.isArray(d)) {
+          setTrades(d)
+        } else {
+          setTrades([])
+        }
+        setLoading(false)
+      })
+      .catch(err => {
+        setError(err.message || 'Failed to load top trades.')
+        setLoading(false)
+      })
   }, [apiBase])
 
   const handleSort = key => {
@@ -490,7 +1525,8 @@ function Dashboard({ apiBase, setActive }) {
             </thead>
             <tbody>
               {loading && <tr><td colSpan={10}><div className="state">Analyzing market intelligence & generating top 15 trades…</div></td></tr>}
-              {!loading && sortedTrades.map(t => (
+              {error && <tr><td colSpan={10}><div className="state error">{error}</div></td></tr>}
+              {!loading && !error && sortedTrades.map(t => (
                 <tr key={t.ticker} className="data-row">
                   <td style={{ fontWeight: 700, color: '#7ec8f0' }}>#{t.rank}</td>
                   <td>

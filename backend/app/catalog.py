@@ -4,6 +4,8 @@ FIXED_TABLES = {
     "historical_calls": {"label": "Historical calls", "group": "Calls"},
     "intraday_call": {"label": "Intraday calls", "group": "Calls"},
     "fno_active": {"label": "FNO Active", "group": "Derivative"},
+    "option_chain_analyzer": {"label": "Option Chain & Greeks", "group": "Derivative"},
+    "best_option_strategy": {"label": "Best Option Strategy", "group": "Derivative"},
     "quicktrade_timestamp": {"label": "QuickTrade", "group": "Technical Scanners"},
     "screener_timestamp": {"label": "Screener", "group": "Technical Scanners"},
     "operatorfootprint": {"label": "Operator footprint", "group": "Technical Scanners"},
