@@ -8,8 +8,9 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     postgres_user: str = "jmbxdbuser"
     postgres_password: str = ""
-    postgres_db_rawdata: str = "jmbxdb"
-    postgres_db_bsa: str = "jmbxdb"
+    postgres_db_rawdata: str = "bsa_db"
+    postgres_db_bsa: str = "bsa_db"
+
 
     rawdata_postgres_dsn: Optional[str] = None
     bsa_postgres_dsn: Optional[str] = None

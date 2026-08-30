@@ -1,0 +1,40 @@
+-- 1. Create or update the user with SUPERUSER privileges and the password
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_user WHERE usename = 'jmbxdbuser') THEN
+        CREATE USER jmbxdbuser WITH SUPERUSER PASSWORD 'jmbxdbpassword';
+    ELSE
+        ALTER USER jmbxdbuser WITH SUPERUSER PASSWORD 'jmbxdbpassword';
+    END IF;
+END
+$$;
+
+-- 2. Grant full global database-level permissions
+GRANT ALL PRIVILEGES ON DATABASE rawdata_db TO jmbxdbuser;
+GRANT ALL PRIVILEGES ON DATABASE bsa_db TO jmbxdbuser;
+
+-- 3. Switch to rawdata_db to grant schema and table-level permissions
+\c rawdata_db
+GRANT ALL PRIVILEGES ON SCHEMA public TO jmbxdbuser;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO jmbxdbuser;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO jmbxdbuser;
+
+-- 4. Switch to bsa_db to grant schema and table-level permissions
+\c bsa_db
+GRANT ALL PRIVILEGES ON SCHEMA public TO jmbxdbuser;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO jmbxdbuser;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO jmbxdbuser;
+
+
+
+
+
+update /etc/postgresql/_version_Number_/main/pg_hba.conf
+
+host    all             jmbxdbuser      0.0.0.0/0               scram-sha-256
+
+check if the connection is successfull to db over terminal
+psql -h 127.0.0.1 -U jmbxdbuser -d rawdata_db
+
+
+
