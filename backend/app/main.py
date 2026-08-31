@@ -926,7 +926,20 @@ if (FRONTEND_DIST / "assets").is_dir():
 
 @app.get("/{path:path}", include_in_schema=False)
 def portal(path: str):
+    if path:
+        file_path = FRONTEND_DIST / path
+        if file_path.is_file():
+            return FileResponse(file_path)
     index = FRONTEND_DIST / "index.html"
     if not index.exists():
         raise HTTPException(503, "Frontend not built. Run 'npm --prefix frontend run build'.")
-    return FileResponse(index)
+    return FileResponse(
+        index,
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+

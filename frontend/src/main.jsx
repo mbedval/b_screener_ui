@@ -148,20 +148,12 @@ function ThemeSelector({ currentTheme, onSelectTheme }) {
 function Landing({ theme, setTheme }) {
   return (
     <div className="landing">
-      <header className="landing-header">
-        <div className="brand" style={{ gap: 12 }}>
-          <img src="/BSA.png" alt="BSA Logo" style={{ height: 38, width: 'auto', borderRadius: 6 }} />
-          <div><b>BSA Data Portal</b><small>POSTGRESQL APPLICATIONS</small></div>
-        </div>
-        <ThemeSelector currentTheme={theme} onSelectTheme={setTheme} />
-      </header>
       <main className="landing-main">
         <div className="landing-logo-wrap">
           <img src="/BSA.png" alt="BSA Logo" className="landing-logo" />
         </div>
         <p className="eyebrow portal-title-highlight">BSA MARKET INTELLIGENCE PORTAL</p>
-        <h1>Indian Stock Market Screener & Analysis</h1>
-        <p className="landing-copy">Access institutional trade calls, technical scanners, delivery volume spikes, and cash flow fundamental metrics across Nifty tickers.</p>
+        <h1>Find best opputunities</h1>
         <div className="app-cards">
           {Object.entries(apps).filter(([key]) => key === 'intelligence').map(([key, item]) => (
             <a className={`app-card ${key}`} href={`/${key}`} key={key}>
@@ -171,8 +163,48 @@ function Landing({ theme, setTheme }) {
             </a>
           ))}
         </div>
-
       </main>
+      <footer className="landing-footer">
+        <div className="footer-top">
+          <div className="brand" style={{ gap: 12 }}>
+            <img src="/BSA.png" alt="BSA Logo" style={{ height: 36, width: 'auto', borderRadius: 6 }} />
+            <div><b>BSA Data Portal</b><small>POSTGRESQL APPLICATIONS</small></div>
+          </div>
+          <ThemeSelector currentTheme={theme} onSelectTheme={setTheme} />
+        </div>
+
+        <div className="footer-middle">
+          <div className="footer-info">
+            <p className="footer-copy">© {new Date().getFullYear()} BSA Market Intelligence. All rights reserved.</p>
+            <p className="footer-subtext">Institutional-grade stock market analytics, automated trading calls, and multi-factor technical scanners.</p>
+          </div>
+
+          <div className="footer-socials">
+            <a href="https://telegram.org" target="_blank" rel="noreferrer" title="Telegram" className="social-link">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+            </a>
+            <a href="https://twitter.com" target="_blank" rel="noreferrer" title="Twitter / X" className="social-link">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg>
+            </a>
+            <a href="https://linkedin.com" target="_blank" rel="noreferrer" title="LinkedIn" className="social-link">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/></svg>
+            </a>
+            <a href="https://github.com" target="_blank" rel="noreferrer" title="GitHub" className="social-link">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+            </a>
+          </div>
+        </div>
+
+        <div className="footer-links">
+          <a href="#privacy">Privacy Policy</a>
+          <span>•</span>
+          <a href="#terms">Terms of Service</a>
+          <span>•</span>
+          <a href="#disclaimer">Market Disclaimer</a>
+          <span>•</span>
+          <a href="#support">Support & Documentation</a>
+        </div>
+      </footer>
     </div>
   )
 }
@@ -305,21 +337,20 @@ function App() {
   return (
     <div className="app-shell">
       <aside>
-        <div className="brand">
-          <span className="brand-mark">B</span>
-          <div><b>{appInfo.title}</b><small>{appInfo.database.toUpperCase()}</small></div>
+        <div className="brand" style={{ gap: 10 }}>
+          <img src="/bsa.png" alt="BSA Logo" style={{ height: 32, width: 'auto', borderRadius: 6 }} />
+          <div><b>{appInfo.title}</b></div>
         </div>
         <nav>
-          <a className="nav-item" href="/"><Home /> Portal home</a>
+          <a className="nav-item" href="/"><Home /> Home</a>
           <button className={`nav-item ${active === 'dashboard' ? 'selected' : ''}`} onClick={() => setActive('dashboard')}>
             <LayoutDashboard /> Overview
           </button>
 
-          {/* Navigation sections ordered: RAW DATA -> MASTER DATA -> CALLS -> DERIVATIVE -> Other catalog sections */}
+          {/* Navigation sections ordered: MASTER DATA -> RAW DATA -> CALLS -> DERIVATIVE -> Other catalog sections */}
           {(() => {
-            const orderedGroups = []
+            const orderedGroups = ['Master Data']
             if (grouped['Raw data']) orderedGroups.push('Raw data')
-            orderedGroups.push('Master Data')
             if (grouped['Calls']) orderedGroups.push('Calls')
             if (grouped['Derivative']) orderedGroups.push('Derivative')
             Object.keys(grouped).forEach(g => {

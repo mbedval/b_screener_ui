@@ -25,6 +25,7 @@ FIXED_TABLES = {
 }
 
 RAW_DATA_TABLES = {
+    "fno_master": {"label": "FNO Master", "group": "Raw data"},
     "ohlcv_daily": {"label": "OHLCV daily", "group": "Raw data"},
     "indicators_daily": {"label": "Indicators daily", "group": "Raw data"},
     "raw_fno_derivatives": {"label": "FNO Derivatives", "group": "Raw data"},

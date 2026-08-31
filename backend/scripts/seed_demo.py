@@ -56,6 +56,10 @@ def create_tables(cur):
         id SERIAL PRIMARY KEY, ticker TEXT UNIQUE NOT NULL, reason TEXT,
         added_by TEXT DEFAULT 'MANUAL', status TEXT DEFAULT 'EXCLUDED',
         last_error TEXT, created_at TEXT)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS fno_master (
+        id SERIAL PRIMARY KEY, symbol TEXT UNIQUE NOT NULL, underlying_name TEXT NOT NULL,
+        instrument_type TEXT NOT NULL, serial_number INTEGER, is_active BOOLEAN DEFAULT TRUE,
+        entry_date TEXT, exit_date TEXT, created_at TEXT)""")
     for sector in SECTORS:
         cur.execute(sql.SQL("CREATE TABLE IF NOT EXISTS {} (ticker TEXT PRIMARY KEY, stock_name TEXT, sector TEXT, market_cap DOUBLE PRECISION, dividend_yield DOUBLE PRECISION, pe DOUBLE PRECISION, pb DOUBLE PRECISION, pat DOUBLE PRECISION, roe DOUBLE PRECISION, debt_to_equity DOUBLE PRECISION, score DOUBLE PRECISION, last_updated TEXT)").format(sql.Identifier(sector)))
         cur.execute(sql.SQL("CREATE TABLE IF NOT EXISTS {} (ticker TEXT PRIMARY KEY, stock_name TEXT, monthly_avg DOUBLE PRECISION, weekly_avg DOUBLE PRECISION, latest_ratio DOUBLE PRECISION, latest_date TEXT, prev_day_ratio DOUBLE PRECISION, prev_day_date TEXT, prev_to_prev_ratio DOUBLE PRECISION, prev_to_prev_date TEXT, deviation DOUBLE PRECISION, is_spike INTEGER, insight TEXT, last_updated TEXT)").format(sql.Identifier(f"{sector}_delivery")))
