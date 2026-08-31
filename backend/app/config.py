@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    postgres_host: str = "192.168.1.14"
+    postgres_host: str = "127.0.0.1"
     postgres_port: int = 5432
     postgres_user: str = "jmbxdbuser"
     postgres_password: str = ""
@@ -20,13 +20,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def build_dsns(self) -> "Settings":
-        if not self.rawdata_postgres_dsn:
-            # If password is provided, include it in the URL
-            pw = f":{self.postgres_password}" if self.postgres_password else ""
-            self.rawdata_postgres_dsn = f"postgresql://{self.postgres_user}{pw}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db_rawdata}"
-        if not self.bsa_postgres_dsn:
-            pw = f":{self.postgres_password}" if self.postgres_password else ""
-            self.bsa_postgres_dsn = f"postgresql://{self.postgres_user}{pw}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db_bsa}"
+        pw = f":{self.postgres_password}" if self.postgres_password else ""
+        self.rawdata_postgres_dsn = f"postgresql://{self.postgres_user}{pw}@127.0.0.1:{self.postgres_port}/{self.postgres_db_rawdata}"
+        self.bsa_postgres_dsn = f"postgresql://{self.postgres_user}{pw}@127.0.0.1:{self.postgres_port}/{self.postgres_db_bsa}"
         return self
 
 

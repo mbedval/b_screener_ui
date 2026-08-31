@@ -3,6 +3,7 @@
 FIXED_TABLES = {
     "historical_calls": {"label": "Historical calls", "group": "Calls"},
     "intraday_call": {"label": "Intraday calls", "group": "Calls"},
+    "fno_master": {"label": "FNO Master", "group": "Derivative"},
     "fno_active": {"label": "FNO Active", "group": "Derivative"},
     "option_chain_analyzer": {"label": "Option Chain & Greeks", "group": "Derivative"},
     "best_option_strategy": {"label": "Best Option Strategy", "group": "Derivative"},
@@ -25,7 +26,6 @@ FIXED_TABLES = {
 }
 
 RAW_DATA_TABLES = {
-    "fno_master": {"label": "FNO Master", "group": "Raw data"},
     "ohlcv_daily": {"label": "OHLCV daily", "group": "Raw data"},
     "indicators_daily": {"label": "Indicators daily", "group": "Raw data"},
     "raw_fno_derivatives": {"label": "FNO Derivatives", "group": "Raw data"},

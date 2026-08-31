@@ -320,5 +320,10 @@ select.select-input{background:#0b1929;border:1px solid #294566;color:#d9eaff;pa
   .app-card b{padding:10px 18px;font-size:12px}
 }
 
+.clickable-fno-row:hover{background:rgba(102,228,202,0.14) !important;transition:background .15s ease}
+.fno-ticker-badge{background:rgba(102,228,202,0.12);border:1px solid rgba(102,228,202,0.28);padding:3px 8px;border-radius:5px;transition:all .15s ease}
+.clickable-fno-row:hover .fno-ticker-badge{background:rgba(102,228,202,0.25);border-color:#66e4ca;color:#fff !important}
+
+
 
 

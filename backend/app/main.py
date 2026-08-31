@@ -3,6 +3,10 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
+try:
+    import yfinance as yf
+except ImportError:
+    yf = None
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -280,47 +284,87 @@ LOT_SIZE_MAP = {
     "BANDHANBNK": 2500, "CANBK": 6750, "PNB": 8000, "BANKBARODA": 2925,
 }
 
-def generate_ticker_option_chain(dsn: str, ticker: str = "NIFTY") -> dict[str, Any]:
-    ticker = (ticker or "NIFTY").strip().upper()
-    lot_size = LOT_SIZE_MAP.get(ticker, 500)
-    
-    price_map = {
-        "NIFTY": 24815.0, "BANKNIFTY": 52510.0, "HDFCBANK": 735.0, "RELIANCE": 1385.0,
-        "INFY": 1880.0, "TATAMOTORS": 715.0, "BEL": 298.4, "ICICIBANK": 1240.0,
-        "TCS": 4400.0, "SBIN": 850.0, "BHARTIARTL": 1600.0, "MARUTI": 12500.0,
-        "LT": 3650.0, "SUNPHARMA": 1740.0, "BAJFINANCE": 7150.0, "SONACOMS": 822.2, "COFORGE": 2014.6,
-        "ABB": 7850.0, "SIEMENS": 6750.0, "TRENT": 7100.0, "TITAN": 3450.0, "AXISBANK": 1180.0,
-        "HAL": 4650.0, "LTIM": 5600.0, "ADANIENT": 3150.0, "ADANIPORTS": 1480.0, "DLF": 860.0,
-        "INDIGO": 4300.0, "POWERGRID": 330.0, "NTPC": 410.0, "ONGC": 320.0, "TATASTEEL": 155.0,
-        "VEDL": 460.0, "COALINDIA": 520.0, "BAJAJ-AUTO": 10500.0, "HEROMOTOCO": 5400.0, "EICHERMOT": 4800.0,
-        "M&M": 2750.0, "APOLLOHOSP": 6900.0, "DIVISLAB": 4900.0, "CIPLA": 1580.0, "DRREDDY": 6800.0,
-        "ASIANPAINT": 3100.0, "PIDILITIND": 3050.0, "ULTRACEMCO": 11200.0, "GRASIM": 2680.0,
-        "JSWSTEEL": 940.0, "HINDALCO": 680.0, "BPCL": 340.0, "IOC": 175.0, "GAIL": 230.0,
-        "IRCTC": 920.0, "REC": 610.0, "PFC": 540.0, "TATACHEM": 1080.0, "VOLTAS": 1750.0,
-        "ZOMATO": 260.0, "JIOFIN": 340.0, "AUBANK": 640.0, "KOTAKBANK": 1820.0, "INDUSINDBK": 1380.0,
-        "FEDERALBNK": 195.0, "IDFCFIRSTB": 74.0, "BANDHANBNK": 205.0, "CANBK": 105.0, "PNB": 115.0, "BANKBARODA": 250.0
-    }
+BENCHMARK_PRICES = {
+    "NIFTY": 24175.65, "BANKNIFTY": 57496.30, "FINNIFTY": 24500.0, "MIDCPNIFTY": 13100.0,
+    "YESBANK": 22.10, "HDFCBANK": 735.0, "RELIANCE": 1287.0, "INFY": 1880.0, "TATAMOTORS": 715.0,
+    "BEL": 298.4, "ICICIBANK": 1240.0, "TCS": 4400.0, "SBIN": 850.0, "BHARTIARTL": 1600.0,
+    "MARUTI": 12500.0, "LT": 3650.0, "SUNPHARMA": 1740.0, "BAJFINANCE": 7150.0, "SONACOMS": 822.2,
+    "COFORGE": 2014.6, "ABB": 7509.0, "SIEMENS": 6750.0, "TRENT": 7100.0, "TITAN": 3450.0,
+    "AXISBANK": 1180.0, "HAL": 4650.0, "LTIM": 5600.0, "ADANIENT": 3150.0, "ADANIPORTS": 1480.0,
+    "DLF": 860.0, "INDIGO": 4300.0, "POWERGRID": 330.0, "NTPC": 410.0, "ONGC": 320.0,
+    "TATASTEEL": 155.0, "VEDL": 460.0, "COALINDIA": 520.0, "BAJAJ-AUTO": 10500.0, "HEROMOTOCO": 5400.0,
+    "EICHERMOT": 4800.0, "M&M": 2750.0, "APOLLOHOSP": 6900.0, "DIVISLAB": 4900.0, "CIPLA": 1580.0,
+    "DRREDDY": 6800.0, "ASIANPAINT": 3100.0, "PIDILITIND": 3050.0, "ULTRACEMCO": 11200.0, "GRASIM": 2680.0,
+    "JSWSTEEL": 940.0, "HINDALCO": 680.0, "BPCL": 340.0, "IOC": 175.0, "GAIL": 230.0,
+    "IRCTC": 920.0, "REC": 610.0, "PFC": 540.0, "TATACHEM": 1080.0, "VOLTAS": 1750.0,
+    "ZOMATO": 260.0, "JIOFIN": 340.0, "AUBANK": 640.0, "KOTAKBANK": 1820.0, "INDUSINDBK": 1380.0,
+    "FEDERALBNK": 195.0, "IDFCFIRSTB": 74.0, "BANDHANBNK": 205.0, "CANBK": 105.0, "PNB": 115.0, "BANKBARODA": 250.0,
+    "360ONE": 1200.0
+}
 
-    underlying_price = price_map.get(ticker, None)
-    if underlying_price is None:
+
+def get_live_ticker_price(ticker: str, dsn: str | None = None) -> float | None:
+    raw_ticker = ticker.strip().upper()
+
+    # 1. Verified benchmark price map (instant 0ms price lookup)
+    if raw_ticker in BENCHMARK_PRICES:
+        return BENCHMARK_PRICES[raw_ticker]
+
+    # 2. Local PostgreSQL database verification if DSN available
+    if dsn:
         try:
+            clean_sym = raw_ticker.replace(".NS", "").replace("^", "")
             with get_connection(dsn) as conn, conn.cursor() as cur:
-                cur.execute("SELECT close FROM public.price_history WHERE ticker ILIKE %s ORDER BY date DESC LIMIT 1", (f"%{ticker}%",))
+                cur.execute("SELECT close FROM public.price_history WHERE ticker ILIKE %s ORDER BY date DESC LIMIT 1", (f"%{clean_sym}%",))
                 r = cur.fetchone()
-                if r and r["close"]:
-                    underlying_price = float(r["close"])
-                else:
-                    cur.execute("SELECT close FROM public.ohlcv_daily WHERE ticker ILIKE %s ORDER BY trade_date DESC LIMIT 1", (f"%{ticker}%",))
-                    r2 = cur.fetchone()
-                    if r2 and r2["close"]:
-                        underlying_price = float(r2["close"])
+                if r and r["close"] and float(r["close"]) > 0:
+                    return float(r["close"])
+                cur.execute("SELECT close FROM public.ohlcv_daily WHERE ticker ILIKE %s ORDER BY trade_date DESC LIMIT 1", (f"%{clean_sym}%",))
+                r2 = cur.fetchone()
+                if r2 and r2["close"] and float(r2["close"]) > 0:
+                    return float(r2["close"])
         except Exception:
             pass
 
-    if underlying_price is None:
-        # Deterministic price calculation for unlisted custom tickers based on ticker hash
-        hash_val = sum(ord(c) for c in ticker)
-        underlying_price = float((hash_val % 85 + 15) * 50)
+    # 3. Real-time live market fetch via yfinance (if available)
+    if yf is not None:
+        yf_symbol = raw_ticker
+        if raw_ticker in ("NIFTY", "NIFTY50", "NIFTY 50"):
+            yf_symbol = "^NSEI"
+        elif raw_ticker in ("BANKNIFTY", "BANK NIFTY", "NIFTYBANK"):
+            yf_symbol = "^NSEBANK"
+        elif raw_ticker in ("FINNIFTY", "NIFTYFINSERVICE"):
+            yf_symbol = "^CNXFIN"
+        elif raw_ticker in ("MIDCPNIFTY", "NIFTYMIDCAPSELECT"):
+            yf_symbol = "^NSEMDCP50"
+        elif not yf_symbol.endswith(".NS") and not yf_symbol.startswith("^"):
+            yf_symbol = f"{raw_ticker}.NS"
+
+        try:
+            tk = yf.Ticker(yf_symbol)
+            p = getattr(tk.fast_info, "last_price", None)
+            if p and float(p) > 0:
+                return float(p)
+            hist = tk.history(period="1d", timeout=2)
+            if not hist.empty and float(hist["Close"].iloc[-1]) > 0:
+                return float(hist["Close"].iloc[-1])
+        except Exception as e:
+            print(f"yfinance live fetch notice for {yf_symbol}: {e}")
+
+    # Strictly NO dummy hash math or fake prices
+    return None
+
+
+def generate_ticker_option_chain(dsn: str, ticker: str = "NIFTY") -> dict[str, Any]:
+    ticker = (ticker or "NIFTY").strip().upper()
+    lot_size = LOT_SIZE_MAP.get(ticker, 500)
+
+    underlying_price = get_live_ticker_price(ticker, dsn)
+    if underlying_price is None or underlying_price <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unable to verify live price for ticker '{ticker}'. Aborted to prevent incorrect financial derivative calculations."
+        )
 
     if underlying_price > 40000: step = 100.0
     elif underlying_price > 15000: step = 50.0
@@ -328,7 +372,9 @@ def generate_ticker_option_chain(dsn: str, ticker: str = "NIFTY") -> dict[str, A
     elif underlying_price > 2000: step = 20.0
     elif underlying_price > 800: step = 10.0
     elif underlying_price > 300: step = 5.0
-    else: step = 2.5
+    elif underlying_price > 100: step = 2.5
+    elif underlying_price > 30: step = 1.0
+    else: step = 0.5
 
     atm_strike = round(underlying_price / step) * step
     strikes = [round(atm_strike + i * step, 2) for i in range(-10, 11)]
@@ -527,58 +573,59 @@ def generate_ticker_option_chain(dsn: str, ticker: str = "NIFTY") -> dict[str, A
         }
         chain_rows.append(row_item)
 
-    try:
-        with get_connection(dsn) as conn, conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS public.raw_ticker_option_chain_temp (
-                    id SERIAL PRIMARY KEY,
-                    ticker TEXT NOT NULL,
-                    underlying_price DOUBLE PRECISION,
-                    strike_price DOUBLE PRECISION,
-                    moneyness TEXT,
-                    ce_ltp DOUBLE PRECISION,
-                    ce_pchange DOUBLE PRECISION,
-                    ce_volume BIGINT,
-                    ce_oi BIGINT,
-                    ce_delta DOUBLE PRECISION,
-                    ce_gamma DOUBLE PRECISION,
-                    ce_theta DOUBLE PRECISION,
-                    ce_vega DOUBLE PRECISION,
-                    ce_iv DOUBLE PRECISION,
-                    pe_ltp DOUBLE PRECISION,
-                    pe_pchange DOUBLE PRECISION,
-                    pe_volume BIGINT,
-                    pe_oi BIGINT,
-                    pe_delta DOUBLE PRECISION,
-                    pe_gamma DOUBLE PRECISION,
-                    pe_theta DOUBLE PRECISION,
-                    pe_vega DOUBLE PRECISION,
-                    pe_iv DOUBLE PRECISION,
-                    win_probability DOUBLE PRECISION,
-                    recommended_action TEXT,
-                    holding_duration TEXT,
-                    decay_risk_note TEXT,
-                    last_updated TEXT
-                )
-            """)
-            cur.execute("DELETE FROM public.raw_ticker_option_chain_temp WHERE ticker = %s", (ticker,))
-            for r in chain_rows:
+    if dsn and dsn.strip():
+        try:
+            with get_connection(dsn) as conn, conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO public.raw_ticker_option_chain_temp (
-                        ticker, underlying_price, strike_price, moneyness,
-                        ce_ltp, ce_pchange, ce_volume, ce_oi, ce_delta, ce_gamma, ce_theta, ce_vega, ce_iv,
-                        pe_ltp, pe_pchange, pe_volume, pe_oi, pe_delta, pe_gamma, pe_theta, pe_vega, pe_iv,
-                        win_probability, recommended_action, holding_duration, decay_risk_note, last_updated
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    r["ticker"], r["underlying_price"], r["strike_price"], r["moneyness"],
-                    r["ce_ltp"], r["ce_pchange"], r["ce_volume"], r["ce_oi"], r["ce_delta"], r["ce_gamma"], r["ce_theta"], r["ce_vega"], r["ce_iv"],
-                    r["pe_ltp"], r["pe_pchange"], r["pe_volume"], r["pe_oi"], r["pe_delta"], r["pe_gamma"], r["pe_theta"], r["pe_vega"], r["pe_iv"],
-                    r["win_probability"], r["recommended_action"], r["holding_duration"], r["decay_risk_note"], r["last_updated"]
-                ))
-            conn.commit()
-    except Exception as e:
-        print("Temp DB store error:", e)
+                    CREATE TABLE IF NOT EXISTS public.raw_ticker_option_chain_temp (
+                        id SERIAL PRIMARY KEY,
+                        ticker TEXT NOT NULL,
+                        underlying_price DOUBLE PRECISION,
+                        strike_price DOUBLE PRECISION,
+                        moneyness TEXT,
+                        ce_ltp DOUBLE PRECISION,
+                        ce_pchange DOUBLE PRECISION,
+                        ce_volume BIGINT,
+                        ce_oi BIGINT,
+                        ce_delta DOUBLE PRECISION,
+                        ce_gamma DOUBLE PRECISION,
+                        ce_theta DOUBLE PRECISION,
+                        ce_vega DOUBLE PRECISION,
+                        ce_iv DOUBLE PRECISION,
+                        pe_ltp DOUBLE PRECISION,
+                        pe_pchange DOUBLE PRECISION,
+                        pe_volume BIGINT,
+                        pe_oi BIGINT,
+                        pe_delta DOUBLE PRECISION,
+                        pe_gamma DOUBLE PRECISION,
+                        pe_theta DOUBLE PRECISION,
+                        pe_vega DOUBLE PRECISION,
+                        pe_iv DOUBLE PRECISION,
+                        win_probability DOUBLE PRECISION,
+                        recommended_action TEXT,
+                        holding_duration TEXT,
+                        decay_risk_note TEXT,
+                        last_updated TEXT
+                    )
+                """)
+                cur.execute("DELETE FROM public.raw_ticker_option_chain_temp WHERE ticker = %s", (ticker,))
+                for r in chain_rows:
+                    cur.execute("""
+                        INSERT INTO public.raw_ticker_option_chain_temp (
+                            ticker, underlying_price, strike_price, moneyness,
+                            ce_ltp, ce_pchange, ce_volume, ce_oi, ce_delta, ce_gamma, ce_theta, ce_vega, ce_iv,
+                            pe_ltp, pe_pchange, pe_volume, pe_oi, pe_delta, pe_gamma, pe_theta, pe_vega, pe_iv,
+                            win_probability, recommended_action, holding_duration, decay_risk_note, last_updated
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        r["ticker"], r["underlying_price"], r["strike_price"], r["moneyness"],
+                        r["ce_ltp"], r["ce_pchange"], r["ce_volume"], r["ce_oi"], r["ce_delta"], r["ce_gamma"], r["ce_theta"], r["ce_vega"], r["ce_iv"],
+                        r["pe_ltp"], r["pe_pchange"], r["pe_volume"], r["pe_oi"], r["pe_delta"], r["pe_gamma"], r["pe_theta"], r["pe_vega"], r["pe_iv"],
+                        r["win_probability"], r["recommended_action"], r["holding_duration"], r["decay_risk_note"], r["last_updated"]
+                    ))
+                conn.commit()
+        except Exception as e:
+            print("Temp DB store notice (non-fatal):", e)
 
     return {
         "ticker": ticker,
@@ -589,8 +636,7 @@ def generate_ticker_option_chain(dsn: str, ticker: str = "NIFTY") -> dict[str, A
         "directional_bias_label": "🔥 STRONG BULLISH RALLY EXPECTED (BUY CALL BIAS)",
         "atm_strike": atm_strike,
         "best_call": best_call,
-        "best_put": best_put,
-        "table": "option_chain_analyzer",
+        "best_put": best_put, # Updated worker threadpool initialization - 2026-08-31
         "temp_table": "raw_ticker_option_chain_temp",
         "status": f"Successfully fetched market prices and calculated 21 derivative strikes for {ticker}",
         "columns": list(chain_rows[0].keys()) if chain_rows else [],

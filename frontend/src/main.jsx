@@ -145,7 +145,7 @@ function ThemeSelector({ currentTheme, onSelectTheme }) {
 }
 
 // ─── Landing page ─────────────────────────────────────────────────────────────
-function Landing({ theme, setTheme }) {
+function Landing({ theme, setTheme, onSelectApp }) {
   return (
     <div className="landing">
       <main className="landing-main">
@@ -156,7 +156,15 @@ function Landing({ theme, setTheme }) {
         <h1>Find best opputunities</h1>
         <div className="app-cards">
           {Object.entries(apps).filter(([key]) => key === 'intelligence').map(([key, item]) => (
-            <a className={`app-card ${key}`} href={`/${key}`} key={key}>
+            <a
+              className={`app-card ${key}`}
+              href={`/${key}`}
+              key={key}
+              onClick={e => {
+                e.preventDefault()
+                if (onSelectApp) onSelectApp(key)
+              }}
+            >
               <h2>{item.title}</h2>
               <p>Explore real-time trade signals, historical calls, multi-factor technical scanners, and cash flow fundamentals.</p>
               <b>Launch Intelligence Portal <ArrowRight size={16} /></b>
@@ -215,28 +223,6 @@ function Landing({ theme, setTheme }) {
 function App() {
   const [path, setPath] = useState(() => window.location.pathname.replace(/^\/|\/$/g, ''))
   const [theme, setTheme] = useState(() => localStorage.getItem('bsa_theme') || 'blue')
-
-  useEffect(() => {
-    document.body.setAttribute('data-theme', theme)
-    localStorage.setItem('bsa_theme', theme)
-  }, [theme])
-
-  useEffect(() => {
-    const handlePopState = () => setPath(window.location.pathname.replace(/^\/|\/$/g, ''))
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
-
-  if (path === '') {
-    return <Landing theme={theme} setTheme={setTheme} />
-  }
-
-
-  const dataset = path === 'intelligence' ? 'intelligence' : 'rawdata'
-  const appInfo = apps[dataset]
-
-  const apiBase = `/api/${dataset}`
-
   const [catalog, setCatalog] = useState([])
   const [overview, setOverview] = useState(null)
   const [dbInfo, setDbInfo] = useState(null)
@@ -249,7 +235,36 @@ function App() {
   const [activeSector, setActiveSector] = useState(null)
   const [sectorScanTable, setSectorScanTable] = useState('operatorfootprint')
   const [sectorData, setSectorData] = useState(null)
+  const [selectedFnoTicker, setSelectedFnoTicker] = useState('NIFTY')
   const [expandedSection, setExpandedSection] = useState(null)
+
+  const dataset = path.startsWith('intelligence') ? 'intelligence' : 'rawdata'
+  const appInfo = apps[dataset] || apps['intelligence']
+  const apiBase = `/api/${dataset}`
+
+  useEffect(() => {
+    document.body.setAttribute('data-theme', theme)
+    localStorage.setItem('bsa_theme', theme)
+  }, [theme])
+
+  useEffect(() => {
+    const handlePopState = () => setPath(window.location.pathname.replace(/^\/|\/$/g, ''))
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  const navigateTo = (newPath) => {
+    const cleanP = (newPath || '').replace(/^\/|\/$/g, '')
+    window.history.pushState({}, '', cleanP === '' ? '/' : `/${cleanP}`)
+    setPath(cleanP)
+  }
+
+  const handleFnoTickerSelect = (symbol) => {
+    if (!symbol) return
+    const s = cleanTicker(symbol).toUpperCase()
+    setSelectedFnoTicker(s)
+    setActive('option_chain_analyzer')
+  }
 
   const load = async (tableName = active, search = query) => {
     setLoading(true)
@@ -265,8 +280,8 @@ function App() {
     }
   }
 
-
   const refreshDashboard = async () => {
+    if (path === '' || path === '/') return
     setError('')
     try {
       const [c, o, d] = await Promise.all([
@@ -278,7 +293,6 @@ function App() {
       setCatalog(cat); setOverview(await o.json()); setDbInfo(details)
     } catch (e) { setError(e.message) }
 
-    // Load sector summary for intelligence
     if (dataset === 'intelligence') {
       try { const s = await api.get('/api/master/sectors-summary'); setSectorSummary(s) } catch (_) {}
     }
@@ -291,8 +305,14 @@ function App() {
     } catch (e) { setError(e.message) }
   }
 
-  useEffect(() => { refreshDashboard() }, [dataset])
   useEffect(() => {
+    if (path !== '' && path !== '/') {
+      refreshDashboard()
+    }
+  }, [dataset, path])
+
+  useEffect(() => {
+    if (path === '' || path === '/') return
     const customPages = ['dashboard', 'fno_active', 'option_chain_analyzer', 'best_option_strategy']
     if (!customPages.includes(active) && !MASTER_PAGES.includes(active) && !active.startsWith('sector:')) {
       load(active, '')
@@ -302,7 +322,7 @@ function App() {
       setActiveSector(sName)
       loadSectorData(sName, sectorScanTable)
     }
-  }, [active])
+  }, [active, path])
 
   const grouped = useMemo(() =>
     catalog.reduce((acc, item) => ({ ...acc, [item.group]: [...(acc[item.group] || []), item] }), {}),
@@ -310,8 +330,8 @@ function App() {
   )
   const current = catalog.find(item => item.name === active)
 
-  // Synchronize expanded section with active route / selection
   useEffect(() => {
+    if (path === '' || path === '/') return
     if (active.startsWith('master:')) {
       setExpandedSection('Master Data')
     } else if (active.startsWith('sector:')) {
@@ -324,15 +344,18 @@ function App() {
         setExpandedSection(grouped['Raw data'] ? 'Raw data' : (grouped['Calls'] ? 'Calls' : 'Master Data'))
       }
     }
-  }, [active, catalog, grouped])
+  }, [active, catalog, grouped, path])
 
   const toggleSection = (groupName) => {
     setExpandedSection(prev => prev === groupName ? null : groupName)
   }
 
   const handleSectorScanChange = (t) => { setSectorScanTable(t); if (activeSector) loadSectorData(activeSector, t) }
-
   const handleMasterNav = (sub) => setActive(`master:${sub}`)
+
+  if (path === '' || path === '/') {
+    return <Landing theme={theme} setTheme={setTheme} onSelectApp={(appKey) => navigateTo(appKey)} />
+  }
 
   return (
     <div className="app-shell">
@@ -342,7 +365,16 @@ function App() {
           <div><b>{appInfo.title}</b></div>
         </div>
         <nav>
-          <a className="nav-item" href="/"><Home /> Home</a>
+          <a
+            className="nav-item"
+            href="/"
+            onClick={e => {
+              e.preventDefault()
+              navigateTo('')
+            }}
+          >
+            <Home /> Home
+          </a>
           <button className={`nav-item ${active === 'dashboard' ? 'selected' : ''}`} onClick={() => setActive('dashboard')}>
             <LayoutDashboard /> Overview
           </button>
@@ -455,11 +487,11 @@ function App() {
         {active === 'fno_active' ? (
           <FnoActivePage data={data} loading={loading} error={error} />
         ) : active === 'option_chain_analyzer' ? (
-          <OptionChainAnalyzerPage apiBase={apiBase} />
+          <OptionChainAnalyzerPage apiBase={apiBase} initialTicker={selectedFnoTicker} />
         ) : active === 'best_option_strategy' ? (
           <BestOptionStrategyPage apiBase={apiBase} />
         ) : !MASTER_PAGES.includes(active) && !active.startsWith('sector:') && active !== 'dashboard' && (
-          <TableView data={data} loading={loading} error={error} query={query} setQuery={setQuery} onSearch={() => load()} />
+          <TableView data={data} loading={loading} error={error} query={query} setQuery={setQuery} onSearch={() => load()} activeTable={active} onSelectFnoTicker={handleFnoTickerSelect} />
         )}
       </main>
     </div>
@@ -533,6 +565,18 @@ function OptionTradeNoteModal({ noteData, onClose }) {
           </div>
         </div>
 
+        {/* Priority Metric: Delta Sensitivity & Intraday Rupee Gain Box */}
+        <div style={{ background: 'rgba(126,200,240,0.08)', padding: 14, borderRadius: 6, border: '1px solid rgba(126,200,240,0.3)', marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#7ec8f0', marginBottom: 6, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+            ⚡ PRIORITY DERIVATIVE METRIC: Delta Sensitivity (Δ = {noteData.delta?.toFixed(2)})
+          </div>
+          <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.6 }}>
+            • <b>Delta ($\Delta = {noteData.delta?.toFixed(2)}$)</b>: For every <b>₹1.00 move</b> in {noteData.instrument?.split(' ')[0]} spot stock, this contract premium gains <b>₹{Math.abs(noteData.delta || 0).toFixed(2)}</b>.<br />
+            • <b>Intraday Rupee Gain per Lot</b>: A +₹1.00 move in spot generates <b>₹{(Math.abs(noteData.delta || 0) * (noteData.lot_size || 500)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</b> profit per lot ({noteData.lot_size?.toLocaleString('en-IN')} shares).<br />
+            • <b>Target Movement Profit</b>: Reaching target ₹{noteData.stock_target?.toFixed(2)} generates <b>₹{(Math.abs(noteData.delta || 0) * Math.abs((noteData.stock_target || 0) - (noteData.stock_spot || 0)) * (noteData.lot_size || 500)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</b> gain per lot.
+          </div>
+        </div>
+
         {/* Manageable Lot Count & Square-Off Liquidity Box */}
         <div style={{ background: 'linear-gradient(135deg, rgba(30,41,59,0.9), rgba(15,23,42,0.95))', padding: 14, borderRadius: 6, border: '1px solid rgba(82,196,26,0.3)', marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
@@ -597,10 +641,11 @@ function OptionTradeNoteModal({ noteData, onClose }) {
 }
 
 // ─── Option Chain & Greek Analyzer Module ────────────────────────────────────
-function OptionChainAnalyzerPage({ apiBase }) {
+function OptionChainAnalyzerPage({ apiBase, initialTicker }) {
   const [selectedTradeNote, setSelectedTradeNote] = useState(null)
-  const [tickerInput, setTickerInput] = useState('NIFTY')
-  const [activeTicker, setActiveTicker] = useState('NIFTY')
+  const initT = (initialTicker || 'NIFTY').trim().toUpperCase()
+  const [tickerInput, setTickerInput] = useState(initT)
+  const [activeTicker, setActiveTicker] = useState(initT)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -651,8 +696,8 @@ function OptionChainAnalyzerPage({ apiBase }) {
   }, [apiBase])
 
   useEffect(() => {
-    loadChain('NIFTY')
-  }, [])
+    loadChain(initialTicker || 'NIFTY')
+  }, [initialTicker, loadChain])
 
   const QUICK_TICKERS = ['NIFTY', 'BANKNIFTY', 'AUBANK', 'ABB', 'HDFCBANK', 'RELIANCE', 'INFY', 'TATAMOTORS', 'BEL', 'ICICIBANK', 'TCS', 'SBIN']
 
@@ -1633,7 +1678,7 @@ const reorderColumns = (cols) => {
 }
 
 // ─── Generic table view ───────────────────────────────────────────────────────
-function TableView({ data, loading, error, query, setQuery, onSearch }) {
+function TableView({ data, loading, error, query, setQuery, onSearch, activeTable, onSelectFnoTicker }) {
   const [sort, setSort] = useState({ key: '', asc: true })
   const [selectedSignal, setSelectedSignal] = useState('ALL')
   const [selectedSector, setSelectedSector] = useState('ALL')
@@ -1831,23 +1876,57 @@ function TableView({ data, loading, error, query, setQuery, onSearch }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => (
-                <tr key={index}>
-                  {displayColumns.map(key => {
-                    const origKey = (key === 'record_id') ? (row.uniqueid ? 'uniqueid' : row.run_time ? 'run_time' : 'id') : key
-                    const value = row[origKey] ?? row[key]
+              {rows.map((row, index) => {
+                const fnoSymbol = row.symbol || row.ticker
+                const isFnoMaster = activeTable === 'fno_master'
+                return (
+                  <tr
+                    key={index}
+                    onClick={() => {
+                      if (isFnoMaster && fnoSymbol && onSelectFnoTicker) {
+                        onSelectFnoTicker(fnoSymbol)
+                      }
+                    }}
+                    className={isFnoMaster ? 'clickable-fno-row' : ''}
+                    style={isFnoMaster ? { cursor: 'pointer' } : {}}
+                    title={isFnoMaster ? `Click to analyze Option Chain & Greeks for ${fnoSymbol}` : ''}
+                  >
+                    {displayColumns.map(key => {
+                      const origKey = (key === 'record_id') ? (row.uniqueid ? 'uniqueid' : row.run_time ? 'run_time' : 'id') : key
+                      const value = row[origKey] ?? row[key]
 
-                    const badge = typeof value === 'string' && /signal|call|status|phase|spike|bet/.test(key) && key !== 'record_id'
-                    if (key === 'ticker') {
-                      return <td key={key}><b style={{ color: '#7ec8f0', fontFamily: "'DM Mono'" }}>{cleanTicker(value)}</b></td>
-                    }
-                    if (key === 'record_id') {
-                      return <td key={key}>{formatRecordIdDate(value)}</td>
-                    }
-                    return <td key={key}>{badge ? <span className={`badge ${signalTone(value)}`}>{format(value, key)}</span> : format(value, key)}</td>
-                  })}
-                </tr>
-              ))}
+                      const badge = typeof value === 'string' && /signal|call|status|phase|spike|bet/.test(key) && key !== 'record_id'
+                      if (key === 'ticker' || key === 'symbol') {
+                        if (isFnoMaster) {
+                          return (
+                            <td key={key}>
+                              <b
+                                className="fno-ticker-badge"
+                                style={{
+                                  color: '#66e4ca',
+                                  fontFamily: "'DM Mono'",
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <TrendingUp size={13} />
+                                {cleanTicker(value)}
+                              </b>
+                            </td>
+                          )
+                        }
+                        return <td key={key}><b style={{ color: '#7ec8f0', fontFamily: "'DM Mono'" }}>{cleanTicker(value)}</b></td>
+                      }
+                      if (key === 'record_id') {
+                        return <td key={key}>{formatRecordIdDate(value)}</td>
+                      }
+                      return <td key={key}>{badge ? <span className={`badge ${signalTone(value)}`}>{format(value, key)}</span> : format(value, key)}</td>
+                    })}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
           {!rows.length && <div className="state">No matching rows.</div>}

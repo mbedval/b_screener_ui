@@ -210,33 +210,53 @@ def sector_tickers(sector_id: int) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/tickers")
-def list_tickers() -> list[dict]:
+def list_tickers(
+    search: Optional[str] = None,
+    sector_id: Optional[int] = None,
+    is_fno: Optional[bool] = None,
+) -> list[dict]:
     with rawdata_conn() as conn, conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT
-                tm.ticker,
-                tm.company_name,
-                tm.is_fno,
-                tm.index_memberships,
-                tm.exchange,
-                tm.updated_at,
-                COALESCE(
-                    json_agg(
-                        json_build_object('id', s.id, 'name', s.name)
-                        ORDER BY s.name
-                    ) FILTER (WHERE s.id IS NOT NULL),
-                    '[]'
-                ) AS sectors
-            FROM ticker_master tm
-            LEFT JOIN ticker_sector ts ON ts.ticker = tm.ticker
-            LEFT JOIN sectors s ON s.id = ts.sector_id
-            GROUP BY tm.ticker, tm.company_name, tm.is_fno,
-                     tm.index_memberships, tm.exchange, tm.updated_at
-            ORDER BY tm.ticker
-            """
-        )
-        return cur.fetchall()
+        query = "SELECT ticker, company_name, is_fno, index_memberships, exchange, updated_at FROM ticker_master"
+        where_clauses = []
+        params = []
+
+        if search:
+            where_clauses.append("(ticker ILIKE %s OR company_name ILIKE %s)")
+            params.extend([f"%{search}%", f"%{search}%"])
+        if is_fno is not None:
+            where_clauses.append("is_fno = %s")
+            params.append(is_fno)
+
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+
+        query += " ORDER BY ticker"
+        cur.execute(query, params)
+        tickers_rows = cur.fetchall()
+
+        cur.execute("""
+            SELECT ts.ticker, s.id, s.name
+            FROM ticker_sector ts
+            JOIN sectors s ON s.id = ts.sector_id
+        """)
+        sector_map: dict[str, list[dict[str, Any]]] = {}
+        for r in cur.fetchall():
+            t_sym = r["ticker"]
+            if t_sym not in sector_map:
+                sector_map[t_sym] = []
+            sector_map[t_sym].append({"id": r["id"], "name": r["name"]})
+
+        result = []
+        for row in tickers_rows:
+            row_dict = dict(row)
+            row_dict["sectors"] = sector_map.get(row["ticker"], [])
+            if sector_id:
+                if any(s["id"] == sector_id for s in row_dict["sectors"]):
+                    result.append(row_dict)
+            else:
+                result.append(row_dict)
+
+        return result
 
 
 @router.post("/tickers", status_code=201)
