@@ -177,10 +177,30 @@ def table_data_for(dsn: str, table_name: str, limit: int, offset: int, search: s
             if ticker and "ticker" in columns:
                 conditions.append(sql.SQL("ticker ILIKE %s")); params.append(f"%{ticker}%")
             if search:
-                searchable = [c for c in columns if c in {"ticker", "stock_name", "company_name", "sector", "overall_call", "overall_signal", "signal", "phase", "insight"}]
+                clean_search = search.strip()
+                search_terms = [clean_search]
+                if " LTD" in clean_search.upper():
+                    search_terms.append(clean_search.upper().replace(" LTD", " LIMITED"))
+                elif " LIMITED" in clean_search.upper():
+                    search_terms.append(clean_search.upper().replace(" LIMITED", " LTD"))
+
+                # Extract tokens (e.g., "BSE" from "BSE LTD")
+                words = [w for w in clean_search.split() if len(w) >= 2]
+                for w in words:
+                    if w.upper() not in [t.upper() for t in search_terms]:
+                        search_terms.append(w)
+
+                searchable = [c for c in columns if c in {
+                    "ticker", "symbol", "stock_name", "company_name", "underlying_name", "underlying",
+                    "sector", "overall_call", "overall_signal", "signal", "phase", "insight", "instrument_type"
+                }]
                 if searchable:
-                    conditions.append(sql.SQL("(") + sql.SQL(" OR ").join(sql.SQL("{}::text ILIKE %s").format(sql.Identifier(c)) for c in searchable) + sql.SQL(")"))
-                    params.extend([f"%{search}%"] * len(searchable))
+                    or_parts = []
+                    for term in search_terms:
+                        for c in searchable:
+                            or_parts.append(sql.SQL("{}::text ILIKE %s").format(sql.Identifier(c)))
+                            params.append(f"%{term}%")
+                    conditions.append(sql.SQL("(") + sql.SQL(" OR ").join(or_parts) + sql.SQL(")"))
             where = sql.SQL(" WHERE ") + sql.SQL(" AND ").join(conditions) if conditions else sql.SQL("")
             order_column = next((c for c in ("run_time", "timestamp", "analysed_at", "last_updated", "latest_date", "trade_date", "date") if c in columns), columns[0])
             base = sql.SQL(" FROM {}.{} ").format(sql.Identifier(settings.database_schema), sql.Identifier(table_name))
@@ -188,7 +208,27 @@ def table_data_for(dsn: str, table_name: str, limit: int, offset: int, search: s
             total = cur.fetchone()["total"]
             query = sql.SQL("SELECT *") + base + where + sql.SQL(" ORDER BY {} DESC NULLS LAST LIMIT %s OFFSET %s").format(sql.Identifier(order_column))
             cur.execute(query, [*params, limit, offset])
-            return {"table": table_name, "columns": columns, "rows": cur.fetchall(), "total": total, "limit": limit, "offset": offset}
+            raw_rows = cur.fetchall()
+
+            if table_name == "fno_master":
+                columns = [c for c in columns if c not in ("id", "record_id", "created_at")]
+                enriched_rows = []
+                for r in raw_rows:
+                    row_dict = dict(r)
+                    sym = row_dict.get("symbol") or row_dict.get("ticker")
+                    if sym:
+                        row_dict["current_price"] = get_live_ticker_price(sym, dsn)
+                    else:
+                        row_dict["current_price"] = None
+                    enriched_rows.append(row_dict)
+                rows = enriched_rows
+                if "current_price" not in columns:
+                    sym_idx = columns.index("symbol") if "symbol" in columns else 0
+                    columns.insert(sym_idx + 1, "current_price")
+            else:
+                rows = raw_rows
+
+            return {"table": table_name, "columns": columns, "rows": rows, "total": total, "limit": limit, "offset": offset}
     except OperationalError as error:
         raise database_error(error)
 
@@ -282,10 +322,11 @@ LOT_SIZE_MAP = {
     "TATACHEM": 550, "VOLTAS": 600, "ZOMATO": 2000, "JIOFIN": 2000,
     "KOTAKBANK": 400, "INDUSINDBK": 500, "FEDERALBNK": 5000, "IDFCFIRSTB": 7500,
     "BANDHANBNK": 2500, "CANBK": 6750, "PNB": 8000, "BANKBARODA": 2925,
+    "BSE": 375, "AMBUJACEM": 1350,
 }
 
 BENCHMARK_PRICES = {
-    "NIFTY": 24175.65, "BANKNIFTY": 57496.30, "FINNIFTY": 24500.0, "MIDCPNIFTY": 13100.0,
+    "NIFTY": 24175.65, "BANKNIFTY": 57496.30, "FINNIFTY": 24500.0, "MIDCPNIFTY": 13100.0, "NIFTYNXT50": 68500.0,
     "YESBANK": 22.10, "HDFCBANK": 735.0, "RELIANCE": 1287.0, "INFY": 1880.0, "TATAMOTORS": 715.0,
     "BEL": 298.4, "ICICIBANK": 1240.0, "TCS": 4400.0, "SBIN": 850.0, "BHARTIARTL": 1600.0,
     "MARUTI": 12500.0, "LT": 3650.0, "SUNPHARMA": 1740.0, "BAJFINANCE": 7150.0, "SONACOMS": 822.2,
@@ -299,60 +340,60 @@ BENCHMARK_PRICES = {
     "IRCTC": 920.0, "REC": 610.0, "PFC": 540.0, "TATACHEM": 1080.0, "VOLTAS": 1750.0,
     "ZOMATO": 260.0, "JIOFIN": 340.0, "AUBANK": 640.0, "KOTAKBANK": 1820.0, "INDUSINDBK": 1380.0,
     "FEDERALBNK": 195.0, "IDFCFIRSTB": 74.0, "BANDHANBNK": 205.0, "CANBK": 105.0, "PNB": 115.0, "BANKBARODA": 250.0,
-    "360ONE": 1200.0
+    "360ONE": 1200.0, "BSE": 3405.0, "AMBUJACEM": 412.05, "ANGELONE": 2850.0, "APLAPOLLO": 1550.0,
+    "ASTRAL": 1850.0, "ATHERENERG": 350.0, "BDL": 1450.0, "BHEL": 285.0, "BIOCON": 360.0,
+    "BLUESTARCO": 1650.0, "BOSCHLTD": 3350.0, "CAMS": 4250.0, "CDSL": 1450.0, "CGPOWER": 680.0,
+    "COCHINSHIP": 1850.0, "DELHIVERY": 410.0, "DMART": 3850.0, "FORCEMOT": 8900.0, "FORTIS": 620.0,
+    "GLENMARK": 1550.0, "GMRINFRA": 92.0, "GMRAIRPORT": 92.0, "GODFRYPHLP": 5800.0, "GODREJCP": 1250.0,
+    "GODREJPROP": 2950.0, "HAVELLS": 1680.0, "HCLTECH": 1780.0, "HDFCAMC": 4150.0, "HINDZINC": 510.0,
+    "HYUNDAI": 1820.0, "ICICIGI": 1850.0, "ICICIPRULI": 720.0, "IDEA": 9.5, "IEX": 185.0,
+    "INDHOTEL": 680.0, "INDIANB": 540.0, "INOXWIND": 220.0, "IREDA": 235.0, "IRFC": 175.0,
+    "JSWENERGY": 710.0, "KALYANKJIL": 680.0, "KAYNES": 5400.0, "KEI": 4200.0, "KFINTECH": 980.0,
+    "KPITTECH": 1650.0, "LAURUSLABS": 480.0, "LICHSGFIN": 650.0, "LICI": 980.0, "LODHA": 1150.0,
+    "LTF": 165.0, "MAHABANK": 62.0, "MANAPPURAM": 215.0, "MANKIND": 2550.0, "MAZDOCK": 4500.0,
+    "MCX": 6200.0, "METROPOLIS": 2150.0, "MFSL": 1180.0, "MOTHERSON": 165.0, "MOTILALOFS": 850.0,
+    "MPHASIS": 2950.0, "MRF": 135000.0, "MUTHOOTFIN": 1950.0, "NATIONALUM": 215.0, "NAUKRI": 7450.0,
+    "NAVINFLUOR": 3350.0, "NBCC": 115.0, "NESTLEIND": 2450.0, "NHPC": 94.0, "NMDC": 225.0,
+    "NYKAA": 185.0, "OBEROIRLTY": 1850.0, "OFSS": 11200.0, "OIL": 510.0, "PAGEIND": 44500.0,
+    "PATANJALI": 1780.0, "PAYTM": 650.0, "PERSISTENT": 5450.0, "PETRONET": 340.0, "PHOENIXLTD": 1650.0,
+    "PIIND": 4550.0, "PNBHOUSING": 980.0, "POLICYBZR": 1750.0, "POWERINDIA": 10800.0, "PRESTIGE": 1680.0,
+    "RADICO": 2150.0, "RVNL": 580.0, "SAIL": 135.0, "SBICARD": 740.0, "SBILIFE": 1820.0,
+    "SHREECEM": 26500.0, "SHRIRAMFIN": 3150.0, "SOLARINDS": 10500.0, "SRF": 2450.0, "SUPREMEIND": 4650.0,
+    "SUZLON": 54.0, "SWIGGY": 490.0, "TATACONSUM": 1180.0, "TATAELXSI": 7450.0, "TATAPOWER": 448.0,
+    "TECHM": 1680.0, "TIINDIA": 3650.0, "TORNTPHARM": 4919.5, "TORNTPOWER": 1650.0, "TVSMOTOR": 2450.0,
+    "UBL": 2150.0, "UNIONBANK": 125.0, "UNITDSPR": 1450.0, "UNOMINDA": 1050.0, "UPL": 560.0, "VBL": 610.0, "WIPRO": 560.0, "ZEEL": 135.0, "ETERNAL": 260.0, "VMM": 107.39,
 }
 
 
 def get_live_ticker_price(ticker: str, dsn: str | None = None) -> float | None:
-    raw_ticker = ticker.strip().upper()
+    from app.price_engine import resolve_ticker_price
+    return resolve_ticker_price(ticker, dsn or settings.bsa_postgres_dsn, settings.rawdata_postgres_dsn)
 
-    # 1. Verified benchmark price map (instant 0ms price lookup)
-    if raw_ticker in BENCHMARK_PRICES:
-        return BENCHMARK_PRICES[raw_ticker]
 
-    # 2. Local PostgreSQL database verification if DSN available
-    if dsn:
-        try:
-            clean_sym = raw_ticker.replace(".NS", "").replace("^", "")
-            with get_connection(dsn) as conn, conn.cursor() as cur:
-                cur.execute("SELECT close FROM public.price_history WHERE ticker ILIKE %s ORDER BY date DESC LIMIT 1", (f"%{clean_sym}%",))
-                r = cur.fetchone()
-                if r and r["close"] and float(r["close"]) > 0:
-                    return float(r["close"])
-                cur.execute("SELECT close FROM public.ohlcv_daily WHERE ticker ILIKE %s ORDER BY trade_date DESC LIMIT 1", (f"%{clean_sym}%",))
-                r2 = cur.fetchone()
-                if r2 and r2["close"] and float(r2["close"]) > 0:
-                    return float(r2["close"])
-        except Exception:
-            pass
+TICKER_STRIKE_STEP_MAP = {
+    "NIFTY": 50.0, "BANKNIFTY": 100.0, "FINNIFTY": 50.0, "MIDCPNIFTY": 25.0, "NIFTYNXT50": 100.0,
+    "BSE": 100.0, "TCS": 100.0, "LT": 100.0, "BAJFINANCE": 100.0, "MARUTI": 200.0,
+    "DIXON": 200.0, "MRF": 500.0, "SHREECEM": 500.0, "PAGEIND": 500.0, "BOSCHLTD": 200.0,
+    "COFORGE": 100.0, "PERSISTENT": 100.0, "ABB": 100.0, "SIEMENS": 100.0, "TRENT": 100.0,
+    "ULTRACEMCO": 100.0, "LTIM": 100.0, "HAL": 100.0, "APOLLOHOSP": 100.0, "DIVISLAB": 100.0,
+    "DRREDDY": 100.0, "HEROMOTOCO": 100.0, "EICHERMOT": 100.0, "BAJAJ-AUTO": 100.0,
+    "VOLTAS": 20.0, "RELIANCE": 20.0, "INFY": 20.0, "HDFCBANK": 10.0, "ICICIBANK": 20.0,
+    "SBIN": 10.0, "BEL": 5.0, "AMBUJACEM": 5.0, "YESBANK": 0.5,
+}
 
-    # 3. Real-time live market fetch via yfinance (if available)
-    if yf is not None:
-        yf_symbol = raw_ticker
-        if raw_ticker in ("NIFTY", "NIFTY50", "NIFTY 50"):
-            yf_symbol = "^NSEI"
-        elif raw_ticker in ("BANKNIFTY", "BANK NIFTY", "NIFTYBANK"):
-            yf_symbol = "^NSEBANK"
-        elif raw_ticker in ("FINNIFTY", "NIFTYFINSERVICE"):
-            yf_symbol = "^CNXFIN"
-        elif raw_ticker in ("MIDCPNIFTY", "NIFTYMIDCAPSELECT"):
-            yf_symbol = "^NSEMDCP50"
-        elif not yf_symbol.endswith(".NS") and not yf_symbol.startswith("^"):
-            yf_symbol = f"{raw_ticker}.NS"
 
-        try:
-            tk = yf.Ticker(yf_symbol)
-            p = getattr(tk.fast_info, "last_price", None)
-            if p and float(p) > 0:
-                return float(p)
-            hist = tk.history(period="1d", timeout=2)
-            if not hist.empty and float(hist["Close"].iloc[-1]) > 0:
-                return float(hist["Close"].iloc[-1])
-        except Exception as e:
-            print(f"yfinance live fetch notice for {yf_symbol}: {e}")
-
-    # Strictly NO dummy hash math or fake prices
-    return None
+def get_ticker_strike_step(ticker: str, price: float) -> float:
+    raw = ticker.strip().upper()
+    if raw in TICKER_STRIKE_STEP_MAP:
+        return TICKER_STRIKE_STEP_MAP[raw]
+    if price > 40000: return 500.0
+    elif price > 15000: return 200.0
+    elif price > 2500: return 100.0
+    elif price > 1000: return 20.0
+    elif price > 500: return 10.0
+    elif price > 100: return 5.0
+    elif price > 30: return 1.0
+    else: return 0.5
 
 
 def generate_ticker_option_chain(dsn: str, ticker: str = "NIFTY") -> dict[str, Any]:
@@ -366,15 +407,7 @@ def generate_ticker_option_chain(dsn: str, ticker: str = "NIFTY") -> dict[str, A
             detail=f"Unable to verify live price for ticker '{ticker}'. Aborted to prevent incorrect financial derivative calculations."
         )
 
-    if underlying_price > 40000: step = 100.0
-    elif underlying_price > 15000: step = 50.0
-    elif underlying_price > 5000: step = 50.0
-    elif underlying_price > 2000: step = 20.0
-    elif underlying_price > 800: step = 10.0
-    elif underlying_price > 300: step = 5.0
-    elif underlying_price > 100: step = 2.5
-    elif underlying_price > 30: step = 1.0
-    else: step = 0.5
+    step = get_ticker_strike_step(ticker, underlying_price)
 
     atm_strike = round(underlying_price / step) * step
     strikes = [round(atm_strike + i * step, 2) for i in range(-10, 11)]
@@ -857,8 +890,10 @@ def overview(dataset: str) -> dict[str, Any]:
 
 @app.get("/api/{dataset}/tables/{table_name}")
 @app.get("/api/{dataset}/table/{table_name}")
-def table_data(dataset: str, table_name: str, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), search: str | None = None, ticker: str | None = None) -> dict[str, Any]:
-    return table_data_for(get_dsn(dataset), table_name, limit, offset, search, ticker)
+def table_data(dataset: str, table_name: str, limit: int = Query(500, ge=1, le=2000), offset: int = Query(0, ge=0), search: str | None = None, ticker: str | None = None) -> dict[str, Any]:
+    lim = int(limit.default) if hasattr(limit, "default") else int(limit)
+    off = int(offset.default) if hasattr(offset, "default") else int(offset)
+    return table_data_for(get_dsn(dataset), table_name, lim, off, search, ticker)
 
 
 

@@ -271,7 +271,7 @@ function App() {
     setError('')
     try {
       const q = search ? `&search=${encodeURIComponent(search)}` : ''
-      const res = await api.get(`${apiBase}/tables/${tableName}?limit=100${q}`)
+      const res = await api.get(`${apiBase}/tables/${tableName}?limit=500${q}`)
       setData(res)
     } catch (e) {
       setError(e.message)
@@ -1682,6 +1682,8 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
   const [sort, setSort] = useState({ key: '', asc: true })
   const [selectedSignal, setSelectedSignal] = useState('ALL')
   const [selectedSector, setSelectedSector] = useState('ALL')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
 
   const displayColumns = useMemo(() => {
     if (!data?.columns) return []
@@ -1694,11 +1696,15 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
     // Map id, run_time, or uniqueid to "record_id"
     cols = cols.map(c => (c === 'id' || c === 'run_time' || c.toLowerCase() === 'uniqueid') ? 'record_id' : c)
 
+    if (activeTable === 'fno_master') {
+      cols = cols.filter(c => c !== 'record_id' && c !== 'id' && c !== 'created_at')
+    }
+
     // Ensure unique column names
     cols = Array.from(new Set(cols))
 
     return reorderColumns(cols)
-  }, [data])
+  }, [data, activeTable])
 
   // Extract distinct sectors available in dataset
   const availableSectors = useMemo(() => {
@@ -1716,7 +1722,8 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
   useEffect(() => {
     setSelectedSignal('ALL')
     setSelectedSector('ALL')
-  }, [data?.table])
+    setPage(1)
+  }, [data?.table, query])
 
   const isCashFlowTable = data?.table === 'cash_flow_summary'
 
@@ -1756,6 +1763,13 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
     return list
   }, [data, sort, selectedSignal, selectedSector, displayColumns])
 
+  const pagedRows = useMemo(() => {
+    if (pageSize === 0) return rows
+    return rows.slice((page - 1) * pageSize, page * pageSize)
+  }, [rows, page, pageSize])
+
+  const totalPages = Math.ceil(rows.length / (pageSize || 1)) || 1
+
   const hasSignalCol = useMemo(() => {
     return displayColumns.some(c => /signal|call|recommended_call|status|phase/i.test(c) && c !== 'record_id')
   }, [displayColumns])
@@ -1766,6 +1780,7 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
     } else {
       setSelectedSignal(filterVal)
     }
+    setPage(1)
   }
 
   const formatRecordIdDate = val => {
@@ -1800,7 +1815,7 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1 }}>
           <div className="search">
             <Search size={17} />
-            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} placeholder="Search ticker, sector, signal…" />
+            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && onSearch()} placeholder="Search ticker, company name, sector, signal (e.g. BSE LTD)..." />
             <button onClick={onSearch}>Search</button>
           </div>
 
@@ -1810,7 +1825,7 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
               <select
                 className="sector-select"
                 value={selectedSector}
-                onChange={e => setSelectedSector(e.target.value)}
+                onChange={e => { setSelectedSector(e.target.value); setPage(1); }}
                 style={{
                   background: 'rgba(255, 255, 255, 0.05)',
                   border: '1px solid rgba(255, 255, 255, 0.15)',
@@ -1835,7 +1850,7 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
 
           {hasSignalCol && (
             <div className="filter-bar">
-              <button className={`filter-btn ${selectedSignal === 'ALL' ? 'active' : ''}`} onClick={() => setSelectedSignal('ALL')}>All</button>
+              <button className={`filter-btn ${selectedSignal === 'ALL' ? 'active' : ''}`} onClick={() => { setSelectedSignal('ALL'); setPage(1); }}>All</button>
               {isCashFlowTable ? (
                 <>
                   <button className={`filter-btn sell ${selectedSignal === 'Bad' ? 'active' : ''}`} onClick={() => handleFilterClick('Bad')}>Bad</button>
@@ -1855,7 +1870,9 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
           )}
 
         </div>
-        <span>{displayColumns.length} columns</span>
+        <span style={{ fontSize: 12, color: '#7ec8f0', fontWeight: 600 }}>
+          {rows.length} records ({displayColumns.length} columns)
+        </span>
       </div>
 
       {loading && <div className="state">Loading data…</div>}
@@ -1865,6 +1882,7 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
           <table>
             <thead>
               <tr>
+                <th style={{ width: 65, textAlign: 'center', color: '#7ec8f0', background: 'rgba(126,200,240,0.1)' }}># S.No</th>
                 {displayColumns.map(key => {
                   const origKey = (key === 'record_id') ? (data?.columns?.includes('uniqueid') ? 'uniqueid' : data?.columns?.includes('run_time') ? 'run_time' : 'id') : key
                   return (
@@ -1876,9 +1894,11 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => {
+              {pagedRows.map((row, index) => {
                 const fnoSymbol = row.symbol || row.ticker
                 const isFnoMaster = activeTable === 'fno_master'
+                const rowNo = (pageSize === 0 ? 0 : (page - 1) * pageSize) + index + 1
+
                 return (
                   <tr
                     key={index}
@@ -1891,6 +1911,10 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
                     style={isFnoMaster ? { cursor: 'pointer' } : {}}
                     title={isFnoMaster ? `Click to analyze Option Chain & Greeks for ${fnoSymbol}` : ''}
                   >
+                    <td style={{ textAlign: 'center', color: '#7ec8f0', fontWeight: 700, fontSize: 11, fontFamily: "'DM Mono'" }}>
+                      #{rowNo}
+                    </td>
+
                     {displayColumns.map(key => {
                       const origKey = (key === 'record_id') ? (row.uniqueid ? 'uniqueid' : row.run_time ? 'run_time' : 'id') : key
                       const value = row[origKey] ?? row[key]
@@ -1919,6 +1943,16 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
                         }
                         return <td key={key}><b style={{ color: '#7ec8f0', fontFamily: "'DM Mono'" }}>{cleanTicker(value)}</b></td>
                       }
+                      if (key === 'current_price') {
+                        const isIndex = row.instrument_type === 'OPTIDX' || ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50'].includes(row.symbol)
+                        return (
+                          <td key={key}>
+                            <b style={{ color: '#38bdf8', fontFamily: "'DM Mono'", fontWeight: 700, background: 'rgba(56,189,248,0.1)', padding: '2px 8px', borderRadius: 4 }}>
+                              {value != null ? (isIndex ? Number(value).toLocaleString() : `₹${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`) : '—'}
+                            </b>
+                          </td>
+                        )
+                      }
                       if (key === 'record_id') {
                         return <td key={key}>{formatRecordIdDate(value)}</td>
                       }
@@ -1930,6 +1964,55 @@ function TableView({ data, loading, error, query, setQuery, onSearch, activeTabl
             </tbody>
           </table>
           {!rows.length && <div className="state">No matching rows.</div>}
+
+          {/* Clean Footer Pagination Controls */}
+          {rows.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15,23,42,0.6)', flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ fontSize: 12, color: '#cbd5e1' }}>
+                Showing <b>{pageSize === 0 ? 1 : (page - 1) * pageSize + 1}</b> to <b>{pageSize === 0 ? rows.length : Math.min(page * pageSize, rows.length)}</b> of <b>{rows.length}</b> records (Total DB: {data.total || rows.length})
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#cbd5e1' }}>
+                  <span>Page Size:</span>
+                  <select
+                    value={pageSize}
+                    onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+                    style={{ background: '#1a202c', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4, padding: '3px 8px', fontSize: 12, cursor: 'pointer' }}
+                  >
+                    <option value={50}>50 per page</option>
+                    <option value={100}>100 per page</option>
+                    <option value={250}>250 per page</option>
+                    <option value={0}>All ({rows.length})</option>
+                  </select>
+                </div>
+
+                {pageSize > 0 && totalPages > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <button
+                      className="filter-btn"
+                      disabled={page <= 1}
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      style={{ padding: '3px 10px', fontSize: 12, opacity: page <= 1 ? 0.4 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }}
+                    >
+                      ◄ Prev
+                    </button>
+                    <span style={{ fontSize: 12, color: '#fff', fontWeight: 600, padding: '0 6px' }}>
+                      Page {page} of {totalPages}
+                    </span>
+                    <button
+                      className="filter-btn"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      style={{ padding: '3px 10px', fontSize: 12, opacity: page >= totalPages ? 0.4 : 1, cursor: page >= totalPages ? 'not-allowed' : 'pointer' }}
+                    >
+                      Next ►
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
