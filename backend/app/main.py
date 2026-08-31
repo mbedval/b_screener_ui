@@ -67,13 +67,21 @@ def catalog_for(dsn: str, dataset: str) -> list[dict[str, str]]:
 def database_info_for(dsn: str) -> dict[str, Any]:
     try:
         with get_connection(dsn) as conn, conn.cursor() as cur:
-            cur.execute("SELECT current_database() AS name, current_user AS user_name")
+            cur.execute("SELECT current_database() AS name, current_user AS user_name, inet_server_addr() AS server_addr")
             current = cur.fetchone()
             cur.execute("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
             databases = [row["datname"] for row in cur.fetchall()]
             cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = %s AND table_type = 'BASE TABLE' ORDER BY table_name", (settings.database_schema,))
             tables = [row["table_name"] for row in cur.fetchall()]
-            return {"database": current["name"], "user": current["user_name"], "schema": settings.database_schema, "available_databases": databases, "tables": tables}
+            host_val = current.get("server_addr") or settings.postgres_host
+            return {
+                "database": current["name"],
+                "user": current["user_name"],
+                "host": str(host_val) if host_val else settings.postgres_host,
+                "schema": settings.database_schema,
+                "available_databases": databases,
+                "tables": tables
+            }
     except OperationalError as error:
         raise database_error(error)
 

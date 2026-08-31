@@ -33,6 +33,22 @@ const apps = {
 
 const cleanTicker = val => typeof val === 'string' ? val.replace(/\.(NS|BO)$/i, '') : val
 
+const maskHost = (hostStr) => {
+  if (!hostStr) return 'jmbx14'
+  const str = String(hostStr).trim()
+  if (str === '127.0.0.1' || str === 'localhost' || str === '::1') {
+    return 'jmbx14'
+  }
+  const parts = str.split('.')
+  if (parts.length === 4 && !isNaN(parts[3])) {
+    const octet = parseInt(parts[3], 10)
+    // If connected to local subnet gateway .1 or loopback, display target machine jmbx14
+    if (octet === 1) return 'jmbx14'
+    return `jmbx${octet}`
+  }
+  return str
+}
+
 const format = (value, key = '') => {
   if (value === null || value === undefined) return '—'
   if (key === 'ticker' || key === 'symbol') return cleanTicker(value)
@@ -439,9 +455,13 @@ function App() {
             })
           })()}
         </nav>
-        <div className="connection">
+        <div className="connection" title={dbInfo?.host ? `Connected to ${dbInfo.host}` : ''}>
           <i className={error ? 'offline' : ''} />
-          {error ? 'Database unavailable' : 'PostgreSQL connected'}
+          <span>
+            {error
+              ? 'Database unavailable'
+              : `PostgreSQL connected ${dbInfo?.host ? `(${maskHost(dbInfo.host)})` : ''}`}
+          </span>
         </div>
       </aside>
 
